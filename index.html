@@ -13,7 +13,14 @@
 -->
 <style>
 :root { --accent:#ff6f59; --accent2:#4ecdc4; --text:#2b2b2b; --card:#fff; }
-* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+/* Doppeltippen darf nicht zoomen: Auf einem Soundboard tippt man schnell
+   mehrmals hintereinander, und das wertet iOS sonst als Doppeltipp-Zoom - die
+   Seite springt dann beim Spielen hin und her.
+   touch-action:manipulation schaltet genau diese Geste ab und laesst Pinch-Zoom
+   und Scrollen bewusst in Ruhe. Nicht wieder auf maximum-scale=1 oder
+   user-scalable=no zurueckfallen: Das hat hier frueher gestanden und verhindert
+   JEDE Vergroesserung, also auch die, die jemand zum Lesen braucht. */
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 /* MUSS vor allen display-Regeln stehen und !important sein.
    Das Browser-Default [hidden]{display:none} kommt aus dem UA-Stylesheet und
    verliert deshalb gegen JEDE eigene display-Regel. .screen und .modal-overlay
