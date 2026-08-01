@@ -69,6 +69,13 @@ main { flex:1; padding:0 20px 40px; }
 .link-btn { background:none; border:none; color:#888; text-decoration:underline; cursor:pointer; margin-top:12px; font-size:.85rem; }
 .hint { font-size:.8rem; color:#777; margin:6px 0 0; line-height:1.4; }
 .hint-warn { color:#8a4b00; background:#fff4e0; border-radius:8px; padding:8px; }
+#recordBtn:disabled { background:#ccc; cursor:not-allowed; }
+#recordBtn.recording { background:#d64545; }
+#recordTimer { margin-left:10px; font-weight:600; font-variant-numeric:tabular-nums; }
+/* Blinkender Punkt, damit eine laufende Aufnahme nicht uebersehen wird. */
+#recordTimer.live::before { content:'●'; color:#d64545; margin-right:6px; animation:blink 1s steps(2,start) infinite; }
+@keyframes blink { to { visibility:hidden; } }
+@media (prefers-reduced-motion:reduce){ #recordTimer.live::before { animation:none; } }
 .diag { font-family:ui-monospace,Menlo,monospace; font-size:.75rem; color:#666; background:#f5f5f5;
   padding:8px; border-radius:8px; margin-top:10px; white-space:pre-wrap; word-break:break-all; }
 @media (max-width:480px){ .board{ grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); } }
@@ -132,20 +139,24 @@ main { flex:1; padding:0 20px 40px; }
         <label>Foto<br><input type="file" id="photoInput" accept="image/*" required></label>
         <img id="photoPreview" class="preview-img" hidden alt="Vorschau">
         <div class="audio-tabs">
-          <button type="button" class="tab-btn active" data-tab="upload">Datei hochladen</button>
-          <button type="button" class="tab-btn" data-tab="record">Aufnehmen</button>
+          <!-- Aufnehmen steht vorn und ist vorausgewaehlt: Stimmen aufnehmen ist
+               der eigentliche Zweck der Seite, Hochladen der Sonderfall. -->
+          <button type="button" class="tab-btn active" data-tab="record">🎙️ Aufnehmen</button>
+          <button type="button" class="tab-btn" data-tab="upload">Datei hochladen</button>
         </div>
         <!-- Nur accept="audio/*" reicht nicht: manche Datei-Dialoge blenden .m4a
              aus, weil das System dafuer keinen oder einen exotischen MIME-Typ
              meldet. Die Endungen zusaetzlich aufzuzaehlen macht sie waehlbar. -->
-        <div id="audioUploadTab">
+        <div id="audioUploadTab" hidden>
           <input type="file" id="audioInput"
                  accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg,.oga,.opus,.webm,.mp4">
           <p id="audioHint" class="hint">m4a (iPhone-Sprachmemo), mp3, wav, ogg/opus und webm funktionieren.</p>
         </div>
-        <div id="audioRecordTab" hidden>
+        <div id="audioRecordTab">
           <button type="button" id="recordBtn">🎙️ Aufnahme starten</button>
           <span id="recordTimer"></span>
+          <p id="recordNote" class="hint">Auf „Aufnahme starten" tippen, ins Mikrofon sprechen, wieder stoppen.
+             Beim ersten Mal fragt der Browser nach der Mikrofon-Freigabe. Maximal 60 Sekunden.</p>
         </div>
         <audio id="audioPreview" controls hidden preload="metadata"></audio>
         <p id="audioNote" class="hint" hidden></p>
@@ -174,7 +185,7 @@ const tokenStep = $('tokenStep'), tokenInput = $('tokenInput'), tokenSave = $('t
 const adminPanel = $('adminPanel'), adminStatus = $('adminStatus'), tileList = $('tileList'), resetTokenBtn = $('resetToken');
 const addForm = $('addForm'), nameInput = $('nameInput'), photoInput = $('photoInput'), photoPreview = $('photoPreview');
 const audioInput = $('audioInput'), audioPreview = $('audioPreview'), recordBtn = $('recordBtn'), recordTimer = $('recordTimer');
-const audioNote = $('audioNote');
+const audioNote = $('audioNote'), recordNote = $('recordNote');
 const saveTileBtn = $('saveTileBtn'), saveStatus = $('saveStatus');
 
 const EMPTY_STATE_HTML = emptyState.innerHTML;   // Originaltext, bevor evtl. ein Fehler reingeschrieben wird
@@ -273,6 +284,10 @@ adminModal.addEventListener('click', (e) => { if (e.target === adminModal) close
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !adminModal.hidden) closeAdmin(); });
 
 function closeAdmin() {
+  // Ohne das lief eine gestartete Aufnahme nach dem Schliessen weiter und das
+  // Mikrofon blieb an - der Zaehler tickte im unsichtbaren Dialog munter weiter.
+  if (isRecording()) stopRecording('Dialog geschlossen — Aufnahme beendet.');
+  releaseMic();
   adminModal.hidden = true;
   loadTiles();   // frisch geladene Kacheln uebernehmen, sobald Pages neu gebaut hat
 }
@@ -564,35 +579,124 @@ function setAudioPreview(blob) {
   audioPreview.load();
 }
 
-recordBtn.addEventListener('click', async () => {
-  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recordedChunks = [];
-      // isTypeSupported fehlt auf aelteren Safari-Versionen ganz.
-      const mt = (typeof MediaRecorder.isTypeSupported === 'function'
-        && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm' : '';
-      mediaRecorder = new MediaRecorder(stream, mt ? { mimeType: mt } : undefined);
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-      mediaRecorder.onstop = () => {
-        recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-        setAudioPreview(recordedBlob);
-        stream.getTracks().forEach((t) => t.stop());
-      };
-      mediaRecorder.start();
-      recordBtn.textContent = '⏹️ Aufnahme stoppen';
-      recordSeconds = 0; recordTimer.textContent = '0:00';
-      recordingInterval = setInterval(() => {
-        recordSeconds++;
-        recordTimer.textContent = Math.floor(recordSeconds / 60) + ':' + String(recordSeconds % 60).padStart(2, '0');
-      }, 1000);
-    } catch (e) { alert('Mikrofon-Zugriff nicht möglich: ' + e.message); }
-  } else {
-    mediaRecorder.stop();
-    clearInterval(recordingInterval);
-    recordBtn.textContent = '🎙️ Aufnahme starten';
+// Ohne Obergrenze laeuft eine vergessene Aufnahme weiter und landet als
+// Riesendatei dauerhaft in der Repo-History. Eine Minute reicht fuer eine Kachel.
+const MAX_RECORD_SECONDS = 60;
+const RECORD_HINT = 'Auf „Aufnahme starten" tippen, ins Mikrofon sprechen, wieder stoppen. '
+  + 'Beim ersten Mal fragt der Browser nach der Mikrofon-Freigabe. Maximal 60 Sekunden.';
+
+let micStream = null;
+
+function recordingSupported() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+}
+
+function setRecordNote(text, warn) {
+  recordNote.textContent = text;
+  recordNote.className = warn ? 'hint hint-warn' : 'hint';
+}
+
+// Die Browser-Fehlernamen sind standardisiert, die Meldungen darin aber englisch
+// und technisch. Fuer die Familie uebersetzt - inkl. dem, was jeweils zu tun ist.
+function micErrorText(e) {
+  switch (e && e.name) {
+    case 'NotAllowedError': case 'PermissionDeniedError': case 'SecurityError':
+      return 'Der Zugriff aufs Mikrofon wurde abgelehnt. In der Adresszeile des Browsers '
+           + 'auf das Schloss-Symbol tippen, Mikrofon erlauben, dann neu laden.';
+    case 'NotFoundError': case 'DevicesNotFoundError':
+      return 'Es wurde kein Mikrofon gefunden.';
+    case 'NotReadableError': case 'TrackStartError':
+      return 'Das Mikrofon wird gerade von einem anderen Programm benutzt. '
+           + 'Dort schließen und noch einmal versuchen.';
+    default:
+      return 'Aufnahme nicht möglich' + (e && e.message ? ' (' + e.message + ')' : '') + '.';
   }
+}
+
+function releaseMic() {
+  if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+}
+
+function tickTimer() {
+  recordTimer.textContent = Math.floor(recordSeconds / 60) + ':' + String(recordSeconds % 60).padStart(2, '0');
+}
+
+function isRecording() { return !!mediaRecorder && mediaRecorder.state === 'recording'; }
+
+async function startRecording() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordedChunks = [];
+    // isTypeSupported fehlt auf aelteren Safari-Versionen ganz.
+    const mt = (typeof MediaRecorder.isTypeSupported === 'function'
+      && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm' : '';
+    mediaRecorder = new MediaRecorder(micStream, mt ? { mimeType: mt } : undefined);
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = onRecordingStopped;
+    mediaRecorder.start();
+
+    recordBtn.textContent = '⏹️ Aufnahme stoppen';
+    recordBtn.classList.add('recording');
+    recordTimer.classList.add('live');
+    recordSeconds = 0; tickTimer();
+    setRecordNote('Aufnahme läuft…');
+    recordingInterval = setInterval(() => {
+      recordSeconds++; tickTimer();
+      if (recordSeconds >= MAX_RECORD_SECONDS) stopRecording('Maximale Länge erreicht — Aufnahme beendet.');
+    }, 1000);
+  } catch (e) {
+    releaseMic();                       // sonst bliebe das Mikrofon an, wenn erst der Recorder scheitert
+    resetRecordUi();
+    setRecordNote(micErrorText(e), true);
+  }
+}
+
+function stopRecording(noteWhenDone) {
+  if (!isRecording()) return;
+  pendingStopNote = noteWhenDone || null;
+  mediaRecorder.stop();                 // onstop raeumt Stream und UI auf
+}
+
+function resetRecordUi() {
+  clearInterval(recordingInterval); recordingInterval = null;
+  recordBtn.textContent = '🎙️ Aufnahme starten';
+  recordBtn.classList.remove('recording');
+  recordTimer.classList.remove('live');
+}
+
+let pendingStopNote = null;
+
+function onRecordingStopped() {
+  resetRecordUi();
+  releaseMic();
+  const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  // Eine leere Aufnahme ist truthy und waere vorher als 0-Byte-Datei im Repo
+  // gelandet - die Kachel haette dann einfach nie einen Ton gemacht.
+  if (!blob.size) {
+    recordedBlob = null;
+    audioPreview.hidden = true; audioNote.hidden = true;
+    recordTimer.textContent = '';
+    setRecordNote('Es wurde nichts aufgenommen. Bitte noch einmal versuchen und dabei sprechen.', true);
+    return;
+  }
+  recordedBlob = blob;
+  setAudioPreview(recordedBlob);
+  setRecordNote(pendingStopNote || 'Aufnahme fertig — unten anhören, dann „Kachel speichern".',
+                !!pendingStopNote);
+  pendingStopNote = null;
+}
+
+recordBtn.addEventListener('click', () => {
+  if (isRecording()) stopRecording(); else startRecording();
 });
+
+// Browser, die gar nicht aufnehmen koennen, sollen den Knopf nicht anbieten -
+// vorher gab es dort nur eine kryptische Fehlermeldung nach dem Antippen.
+if (!recordingSupported()) {
+  recordBtn.disabled = true;
+  setRecordNote('Dieser Browser kann nicht aufnehmen. Bitte oben „Datei hochladen" '
+    + 'benutzen — auf dem iPhone z.B. eine Sprachmemo als m4a.', true);
+}
 
 // Handyfotos sind 3-5 MB. Ungeskaliert landen sie fuer immer in der Repo-History,
 // zaehlen gegen das GitHub-Pages-Limit und werden dann in eine 140px-Kachel geladen.
@@ -680,8 +784,14 @@ addForm.addEventListener('submit', async (e) => {
   }
   const audioSource = tab === 'upload' ? audioInput.files[0] : recordedBlob;
   if (!name || !photoFile || !audioSource) {
-    saveStatus.textContent = 'Bitte Name, Foto und Ton angeben.'; return;
+    saveStatus.textContent = tab === 'record' && !recordedBlob
+      ? 'Bitte zuerst eine Aufnahme machen (und Name und Foto angeben).'
+      : 'Bitte Name, Foto und Ton angeben.';
+    return;
   }
+  // 0-Byte-Dateien wuerden anstandslos hochgeladen und die Kachel bliebe stumm.
+  if (!audioSource.size) { saveStatus.textContent = 'Die Tondatei ist leer. Bitte noch einmal aufnehmen oder eine andere Datei wählen.'; return; }
+  if (!photoFile.size) { saveStatus.textContent = 'Die Bilddatei ist leer. Bitte ein anderes Foto wählen.'; return; }
 
   saveTileBtn.disabled = true;
   saveStatus.textContent = 'Speichere…';
@@ -710,6 +820,7 @@ addForm.addEventListener('submit', async (e) => {
     if (audioPreviewUrl) { URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl = null; }
     audioPreview.removeAttribute('src');
     recordedBlob = null; recordTimer.textContent = '';
+    setRecordNote(RECORD_HINT, false);   // sonst bliebe die Meldung der letzten Aufnahme stehen
     refreshTileList();
   } catch (err) {
     saveStatus.textContent = 'Fehler: ' + err.message;

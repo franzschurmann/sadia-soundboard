@@ -30,7 +30,13 @@ Zahnrad-Symbol oben rechts antippen. Sobald einmal das Passwort "Sadia" eingegeb
 
 Das Token wird dabei mit dem Passwort "Sadia" verschlüsselt und so im Repo abgelegt (`data/admin.key`), nicht im Klartext. Ab da reicht für jeden, der die Seite mit "Sadia" öffnet, automatisch auch der Admin-Bereich — auf jedem Gerät, ohne noch mal ein Token einzugeben.
 
-**Kachel hinzufügen:** Name + Foto + entweder eine Audiodatei hochladen oder direkt über das Mikrofon aufnehmen ("🎙️ Aufnahme starten" / "⏹️ Aufnahme stoppen").
+**Kachel hinzufügen:** Name + Foto + Ton. Für den Ton ist "🎙️ Aufnehmen" vorausgewählt — Hochladen ist der zweite Tab.
+
+**Sprachmemo direkt aufnehmen:** Auf "🎙️ Aufnahme starten" tippen, sprechen, auf "⏹️ Aufnahme stoppen" tippen. Beim ersten Mal fragt der Browser nach der Mikrofon-Freigabe; wird sie abgelehnt, steht im Panel, wie man sie wieder erlaubt. Während der Aufnahme läuft ein Zähler mit rotem Punkt, danach lässt sich das Ergebnis direkt anhören, bevor gespeichert wird.
+
+Zwei eingebaute Grenzen: Nach **60 Sekunden** stoppt die Aufnahme von selbst (eine vergessene Aufnahme würde sonst als Riesendatei dauerhaft in der Git-History landen), und eine **leere Aufnahme wird abgelehnt** statt als 0-Byte-Datei gespeichert zu werden — sonst hätte die Kachel später einfach nie einen Ton gemacht.
+
+Aufgenommen wird in dem Format, das der jeweilige Browser liefert: Chrome und Firefox webm/opus, Safari auf iPhone und Mac m4a. Beides funktioniert.
 
 **Tonformate:** m4a (das Format der iPhone-Sprachmemos), mp3, wav, aac, ogg/opus und webm. Die Endung wird aus der Datei selbst abgeleitet, nicht geraten — dieselbe .m4a meldet sich je nach Gerät als `audio/x-m4a`, `audio/mp4` oder `audio/mp4a-latm`.
 
