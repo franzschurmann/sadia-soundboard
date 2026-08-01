@@ -225,6 +225,12 @@ function authHeaders(token) {
 // ---------- Crypto (password -> AES key, hides the GitHub token at rest) ----------
 
 async function deriveKey(password) {
+  // Guard against a null/undefined password: TextEncoder would happily encode it
+  // as the literal text "null", producing a key nobody can ever reproduce. That
+  // silently locked the admin panel once already - fail loudly instead.
+  if (typeof password !== 'string' || password.length === 0) {
+    throw new Error('Internes Problem: Passwort fehlt beim Verschlüsseln');
+  }
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
