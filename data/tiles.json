@@ -40,5 +40,11 @@
     "name": "Pferdchen",
     "image": "media/pferdchen-1785605848724.jpg",
     "audio": "media/pferdchen-1785605848724.m4a"
+  },
+  {
+    "id": "wasserhahn-1785607161019",
+    "name": "Wasserhahn",
+    "image": "media/wasserhahn-1785607161019.jpg",
+    "audio": "media/wasserhahn-1785607161019.webm"
   }
 ]
