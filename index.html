@@ -67,6 +67,8 @@ main { flex:1; padding:0 20px 40px; }
 #recordBtn, #tokenSave { padding:10px 16px; border-radius:10px; border:none; background:var(--accent); color:#fff; cursor:pointer; }
 #saveTileBtn { padding:12px; border:none; border-radius:12px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
 .link-btn { background:none; border:none; color:#888; text-decoration:underline; cursor:pointer; margin-top:12px; font-size:.85rem; }
+.hint { font-size:.8rem; color:#777; margin:6px 0 0; line-height:1.4; }
+.hint-warn { color:#8a4b00; background:#fff4e0; border-radius:8px; padding:8px; }
 .diag { font-family:ui-monospace,Menlo,monospace; font-size:.75rem; color:#666; background:#f5f5f5;
   padding:8px; border-radius:8px; margin-top:10px; white-space:pre-wrap; word-break:break-all; }
 @media (max-width:480px){ .board{ grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); } }
@@ -133,12 +135,20 @@ main { flex:1; padding:0 20px 40px; }
           <button type="button" class="tab-btn active" data-tab="upload">Datei hochladen</button>
           <button type="button" class="tab-btn" data-tab="record">Aufnehmen</button>
         </div>
-        <div id="audioUploadTab"><input type="file" id="audioInput" accept="audio/*"></div>
+        <!-- Nur accept="audio/*" reicht nicht: manche Datei-Dialoge blenden .m4a
+             aus, weil das System dafuer keinen oder einen exotischen MIME-Typ
+             meldet. Die Endungen zusaetzlich aufzuzaehlen macht sie waehlbar. -->
+        <div id="audioUploadTab">
+          <input type="file" id="audioInput"
+                 accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg,.oga,.opus,.webm,.mp4">
+          <p id="audioHint" class="hint">m4a (iPhone-Sprachmemo), mp3, wav, ogg/opus und webm funktionieren.</p>
+        </div>
         <div id="audioRecordTab" hidden>
           <button type="button" id="recordBtn">🎙️ Aufnahme starten</button>
           <span id="recordTimer"></span>
         </div>
-        <audio id="audioPreview" controls hidden></audio>
+        <audio id="audioPreview" controls hidden preload="metadata"></audio>
+        <p id="audioNote" class="hint" hidden></p>
         <button type="submit" id="saveTileBtn">Kachel speichern</button>
         <p id="saveStatus"></p>
       </form>
@@ -164,6 +174,7 @@ const tokenStep = $('tokenStep'), tokenInput = $('tokenInput'), tokenSave = $('t
 const adminPanel = $('adminPanel'), adminStatus = $('adminStatus'), tileList = $('tileList'), resetTokenBtn = $('resetToken');
 const addForm = $('addForm'), nameInput = $('nameInput'), photoInput = $('photoInput'), photoPreview = $('photoPreview');
 const audioInput = $('audioInput'), audioPreview = $('audioPreview'), recordBtn = $('recordBtn'), recordTimer = $('recordTimer');
+const audioNote = $('audioNote');
 const saveTileBtn = $('saveTileBtn'), saveStatus = $('saveStatus');
 
 const EMPTY_STATE_HTML = emptyState.innerHTML;   // Originaltext, bevor evtl. ein Fehler reingeschrieben wird
@@ -512,8 +523,46 @@ photoInput.addEventListener('change', () => {
 });
 audioInput.addEventListener('change', () => {
   const f = audioInput.files[0];
-  if (f) { audioPreview.src = URL.createObjectURL(f); audioPreview.hidden = false; }
+  if (f) setAudioPreview(f);
 });
+
+// Eine .m4a-Datei sagt nur etwas ueber den Container, nicht ueber den Codec:
+// Sprachmemos vom iPhone sind AAC (spielt ueberall), eine aus iTunes exportierte
+// .m4a kann aber Apple Lossless sein - das spielt ausserhalb von Safari nicht.
+// Ohne diese Pruefung landet so eine Datei unbemerkt im Repo und die Kachel
+// bleibt danach einfach stumm, ohne dass man den Grund sieht.
+let audioPreviewUrl = null;
+
+function setAudioPreview(blob) {
+  if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);   // sonst leckt jede Auswahl eine Blob-URL
+  audioPreviewUrl = URL.createObjectURL(blob);
+  audioPreview.src = audioPreviewUrl;
+  audioPreview.hidden = false;
+  audioNote.hidden = true;
+  audioNote.className = 'hint';
+
+  const urlAtStart = audioPreviewUrl;
+  const stale = () => urlAtStart !== audioPreviewUrl;   // Auswahl wurde inzwischen ersetzt
+
+  audioPreview.onloadedmetadata = () => {
+    if (stale()) return;
+    const s = audioPreview.duration;
+    if (isFinite(s) && s > 0) {
+      audioNote.textContent = 'Ton erkannt, Länge ' +
+        Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0') + '.';
+      audioNote.hidden = false;
+    }
+  };
+  audioPreview.onerror = () => {
+    if (stale()) return;
+    audioNote.className = 'hint hint-warn';
+    audioNote.textContent = 'Dieser Ton lässt sich in diesem Browser nicht abspielen — '
+      + 'die Kachel bliebe stumm. Bei .m4a steckt dann meist Apple Lossless statt AAC drin. '
+      + 'Speichern geht trotzdem, falls du weißt, dass es auf dem Zielgerät läuft.';
+    audioNote.hidden = false;
+  };
+  audioPreview.load();
+}
 
 recordBtn.addEventListener('click', async () => {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') {
@@ -527,8 +576,7 @@ recordBtn.addEventListener('click', async () => {
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
       mediaRecorder.onstop = () => {
         recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-        audioPreview.src = URL.createObjectURL(recordedBlob);
-        audioPreview.hidden = false;
+        setAudioPreview(recordedBlob);
         stream.getTracks().forEach((t) => t.stop());
       };
       mediaRecorder.start();
@@ -589,9 +637,18 @@ function fileToBase64(f) {
   });
 }
 
+// Fuer .m4a melden die Systeme munter verschiedene Typen: Safari/macOS
+// audio/x-m4a, Chrome audio/mp4, manche Windows-Installationen
+// audio/mp4a-latm. Alle muessen auf dieselbe Endung fuehren, sonst landet eine
+// Sprachmemo unter einem Namen im Repo, der nicht zu ihrem Inhalt passt.
 const MIME_EXT = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif',
-  'audio/mpeg':'mp3','audio/mp4':'m4a','audio/aac':'m4a','audio/x-m4a':'m4a',
-  'audio/wav':'wav','audio/x-wav':'wav','audio/webm':'webm','audio/ogg':'ogg' };
+  'audio/mpeg':'mp3','audio/mp3':'mp3',
+  'audio/mp4':'m4a','audio/m4a':'m4a','audio/x-m4a':'m4a','audio/mp4a-latm':'m4a',
+  // audio/aac ist ein roher ADTS-Stream, kein m4a-Container - eigene Endung.
+  'audio/aac':'aac','audio/aacp':'aac','audio/x-aac':'aac',
+  'audio/wav':'wav','audio/x-wav':'wav','audio/wave':'wav','audio/vnd.wave':'wav',
+  'audio/webm':'webm','audio/ogg':'ogg','audio/opus':'opus',
+  'audio/aiff':'aiff','audio/x-aiff':'aiff','audio/x-caf':'caf' };
 
 function extFromFile(file, fallback) {
   if (file.name) { const m = file.name.match(/\.([a-zA-Z0-9]+)$/); if (m) return m[1].toLowerCase(); }
@@ -649,7 +706,9 @@ addForm.addEventListener('submit', async (e) => {
 
     saveStatus.textContent = 'Gespeichert! Kann bis zu einer Minute dauern, bis es auf der Seite live ist.';
     addForm.reset();
-    photoPreview.hidden = true; audioPreview.hidden = true;
+    photoPreview.hidden = true; audioPreview.hidden = true; audioNote.hidden = true;
+    if (audioPreviewUrl) { URL.revokeObjectURL(audioPreviewUrl); audioPreviewUrl = null; }
+    audioPreview.removeAttribute('src');
     recordedBlob = null; recordTimer.textContent = '';
     refreshTileList();
   } catch (err) {

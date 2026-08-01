@@ -32,6 +32,10 @@ Das Token wird dabei mit dem Passwort "Sadia" verschlüsselt und so im Repo abge
 
 **Kachel hinzufügen:** Name + Foto + entweder eine Audiodatei hochladen oder direkt über das Mikrofon aufnehmen ("🎙️ Aufnahme starten" / "⏹️ Aufnahme stoppen").
 
+**Tonformate:** m4a (das Format der iPhone-Sprachmemos), mp3, wav, aac, ogg/opus und webm. Die Endung wird aus der Datei selbst abgeleitet, nicht geraten — dieselbe .m4a meldet sich je nach Gerät als `audio/x-m4a`, `audio/mp4` oder `audio/mp4a-latm`.
+
+Eine Einschränkung, die man kennen sollte: `.m4a` sagt nur, wie die Datei verpackt ist, nicht wie der Ton kodiert ist. Sprachmemos sind AAC und laufen überall. Eine aus iTunes exportierte `.m4a` kann dagegen Apple Lossless enthalten, und das spielt außerhalb von Safari nicht. Das Panel prüft die Datei deshalb direkt nach der Auswahl und warnt, statt die Kachel später stumm bleiben zu lassen.
+
 Fotos werden vor dem Hochladen im Browser auf 900×900 (quadratischer Mittenausschnitt, JPEG) verkleinert. Ein 4-MB-Handyfoto landet so als ~100 KB im Repo — wichtig, weil jede hochgeladene Datei dauerhaft in der Git-History bleibt und die Kacheln ohnehin nur wenige hundert Pixel groß dargestellt werden.
 
 Nach dem Speichern committet GitHub die Dateien direkt ins Repo. GitHub Pages braucht danach bis zu ~1 Minute, um die neue Version live zu stellen — kurz warten und neu laden.
