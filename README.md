@@ -8,7 +8,9 @@ https://franzschurmann.github.io/sadia-soundboard/
 
 ## Passwort
 
-Die Seite fragt beim Öffnen (einmal pro Browser-Sitzung) nach einem Passwort: **Sadia**
+Die Seite fragt beim Öffnen nach einem Passwort: **Sadia**
+
+Die Eingabe wird im `localStorage` des Browsers gemerkt — also dauerhaft pro Gerät und Browser, nicht nur für eine Sitzung. Wer die Abfrage wiedersehen will, löscht die Seitendaten im Browser.
 
 **Ehrlich gesagt:** Das ist nur ein Vorhang gegen zufällige Besucher, keine echte Absicherung. Das Repo ist öffentlich — wer die genaue Bild-/Audio-URL kennt oder das Repo durchsucht, kann Fotos und Aufnahmen trotzdem sehen. Bewusst in Kauf genommen, weil es ein Spaßprojekt für die Familie ist, kein Hochsicherheits-Repo.
 
@@ -30,6 +32,8 @@ Das Token wird dabei mit dem Passwort "Sadia" verschlüsselt und so im Repo abge
 
 **Kachel hinzufügen:** Name + Foto + entweder eine Audiodatei hochladen oder direkt über das Mikrofon aufnehmen ("🎙️ Aufnahme starten" / "⏹️ Aufnahme stoppen").
 
+Fotos werden vor dem Hochladen im Browser auf 900×900 (quadratischer Mittenausschnitt, JPEG) verkleinert. Ein 4-MB-Handyfoto landet so als ~100 KB im Repo — wichtig, weil jede hochgeladene Datei dauerhaft in der Git-History bleibt und die Kacheln ohnehin nur wenige hundert Pixel groß dargestellt werden.
+
 Nach dem Speichern committet GitHub die Dateien direkt ins Repo. GitHub Pages braucht danach bis zu ~1 Minute, um die neue Version live zu stellen — kurz warten und neu laden.
 
 ## Wer sieht/darf was
@@ -38,7 +42,13 @@ Nur noch eine Ebene, ganz bewusst: Wer das Passwort "Sadia" kennt, kann das Boar
 
 ## Sicherheitshinweis
 
-Das Passwort "Sadia" ist als echte Absicherung sehr schwach (es ist buchstäblich der Name der Seite). Bewusst in Kauf genommen für ein Familien-Spaßprojekt. Wer die Seite findet und das Passwort errät, kann theoretisch auch Kacheln hinzufügen/löschen. Bei Verdacht auf Missbrauch: altes Token unter https://github.com/settings/tokens?type=beta widerrufen, dann im Zahnrad-Bereich über "Setup zurücksetzen" ein neues Token hinterlegen.
+Bewusst in Kauf genommen für ein Familien-Spaßprojekt — aber es lohnt sich, den tatsächlichen Stand zu kennen, statt ihn milder zu formulieren als er ist:
+
+Das Passwort "Sadia" ist **kein** Schutz für den Admin-Zugang. Es muss nicht erraten werden: Es steht im Klartext im Quelltext der Seite (`SITE_PASSWORD` in `index.html`), das Repo ist öffentlich, der Salt ist fest, und `data/admin.key` ist unter der Pages-URL frei abrufbar. Damit kann **jeder**, der die Seite findet, das GitHub-Token daraus zurückrechnen — und dieses Token hat Schreibrechte auf dieses Repo (Contents: read & write). Das ist die bewusst gewählte Gegenleistung dafür, dass kein Token pro Gerät eingegeben werden muss.
+
+Praktische Konsequenz: Das Token gilt als öffentlich. Es sollte nur auf dieses eine Repo beschränkt sein (Only select repositories → `sadia-soundboard`, nur `Contents`) — dann ist der schlimmste Fall, dass jemand Fremdes in diesem Spaß-Repo Kacheln anlegt oder löscht.
+
+Bei Verdacht auf Missbrauch: altes Token unter https://github.com/settings/personal-access-tokens widerrufen, dann im Zahnrad-Bereich über "Setup zurücksetzen" ein neues Token hinterlegen.
 
 ## Lokal testen
 
@@ -52,7 +62,11 @@ und dann `http://localhost:8000` öffnen.
 
 ## Struktur
 
-- `index.html`, `css/style.css`, `js/app.js` — die App
+- `index.html` — die komplette App: HTML, CSS und JavaScript bewusst in **einer** Datei.
+  Vorher lagen CSS/JS getrennt daneben; der Browser konnte dann ein frisches
+  `index.html` mit einem veralteten `app.js` aus dem Cache kombinieren, wodurch der
+  Admin-Bereich dauerhaft bei „Einen Moment…" hängen blieb. Mit einer Datei kann
+  dieser Mischzustand nicht mehr entstehen — deshalb bitte nicht wieder aufteilen.
 - `data/tiles.json` — Liste aller Kacheln (Name + Pfade zu Foto/Audio)
 - `data/admin.key` — mit dem Passwort verschlüsseltes GitHub-Token (nur einmalig beim Setup angelegt)
 - `media/` — die eigentlichen Fotos und Audiodateien, vom Admin-Panel aus befüllt
