@@ -577,6 +577,56 @@ function setAudioPreview(blob) {
     audioNote.hidden = false;
   };
   audioPreview.load();
+  warnIfAlac(blob, stale);
+}
+
+// Die Abspielprobe oben fragt immer nur DIESEN Browser. Auf Safari spielt Apple
+// Lossless problemlos - die Datei ist damit unauffaellig, waere auf den Handys
+// der Familie (Chrome/Android/Firefox) aber stumm. Genau so ist die erste echte
+// Kachel entstanden. Deshalb zusaetzlich in die Datei selbst schauen, statt sich
+// auf das Urteil des gerade benutzten Browsers zu verlassen.
+async function warnIfAlac(blob, stale) {
+  if (!(await isAlac(blob)) || stale()) return;
+  if (audioNote.className.includes('hint-warn')) return;   // echten Abspielfehler nicht ueberschreiben
+  audioNote.className = 'hint hint-warn';
+  audioNote.textContent = 'Achtung: Das ist Apple Lossless (ALAC). Hier spielt es zwar, '
+    + 'auf Android- und Chrome-Geräten aber nicht — die Kachel bliebe dort stumm. '
+    + 'Besser direkt aufnehmen oder eine normale Sprachmemo (AAC) nehmen.';
+  audioNote.hidden = false;
+}
+
+// Im MP4/M4A-Container steht der Codec als Vierzeichen-Kennung im moov-Block:
+// 'alac' bei Apple Lossless, 'mp4a' bei AAC.
+// Wichtig: moov liegt normalerweise am DATEIENDE, nicht am Anfang (nur fuers
+// Streaming optimierte Dateien ziehen ihn nach vorn). Ein reiner Blick auf den
+// Dateianfang findet den Codec deshalb bei allem ausser Winzdateien nicht -
+// genau daran ist die erste Fassung dieser Pruefung gescheitert.
+// Darum beide Enden ansehen, ohne grosse Dateien komplett zu laden.
+const SNIFF_CHUNK = 524288;
+
+async function isAlac(blob) {
+  try {
+    const parts = blob.size <= SNIFF_CHUNK * 2
+      ? [blob]
+      : [blob.slice(0, SNIFF_CHUNK), blob.slice(blob.size - SNIFF_CHUNK)];
+    let alac = false, mp4a = false;
+    for (const part of parts) {
+      const bytes = new Uint8Array(await part.arrayBuffer());
+      if (contains(bytes, 'alac')) alac = true;
+      if (contains(bytes, 'mp4a')) mp4a = true;
+    }
+    return alac && !mp4a;
+  } catch (_) { return false; }   // im Zweifel nicht warnen
+}
+
+function contains(bytes, tag) {
+  const t = [];
+  for (let i = 0; i < tag.length; i++) t.push(tag.charCodeAt(i));
+  outer: for (let i = 0; i <= bytes.length - t.length; i++) {
+    for (let j = 0; j < t.length; j++) if (bytes[i + j] !== t[j]) continue outer;
+    return true;
+  }
+  return false;
 }
 
 // Ohne Obergrenze laeuft eine vergessene Aufnahme weiter und landet als
