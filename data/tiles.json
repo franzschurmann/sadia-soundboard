@@ -46,5 +46,11 @@
     "name": "Wasserhahn",
     "image": "media/wasserhahn-1785607161019.jpg",
     "audio": "media/wasserhahn-1785607161019.webm"
+  },
+  {
+    "id": "skateboard-1785607416462",
+    "name": "Skateboard",
+    "image": "media/skateboard-1785607416462.jpg",
+    "audio": "media/skateboard-1785607416462.webm"
   }
 ]
