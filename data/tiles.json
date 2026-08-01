@@ -34,5 +34,11 @@
     "name": "Kreisel",
     "image": "media/kreisel-1785605608542.jpg",
     "audio": "media/kreisel-1785605608542.m4a"
+  },
+  {
+    "id": "pferdchen-1785605848724",
+    "name": "Pferdchen",
+    "image": "media/pferdchen-1785605848724.jpg",
+    "audio": "media/pferdchen-1785605848724.m4a"
   }
 ]
