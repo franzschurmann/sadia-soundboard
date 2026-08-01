@@ -10,5 +10,11 @@
     "name": "Mami",
     "image": "media/mami-1785604702403.jpg",
     "audio": "media/mami-1785604702403.m4a"
+  },
+  {
+    "id": "papi-1785604777917",
+    "name": "Papi",
+    "image": "media/papi-1785604777917.jpg",
+    "audio": "media/papi-1785604777917.m4a"
   }
 ]
