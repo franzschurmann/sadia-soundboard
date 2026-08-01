@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Sadias Soundboard</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8A%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="gate" class="screen">
+  <div class="gate-card">
+    <div class="gate-emoji">🔒</div>
+    <h1>Sadias Soundboard</h1>
+    <p>Passwort eingeben, um reinzukommen.</p>
+    <form id="gateForm">
+      <input type="password" id="gateInput" placeholder="Passwort" autocomplete="off" required>
+      <button type="submit">Los geht's</button>
+    </form>
+    <p id="gateError" class="error" hidden>Falsches Passwort, nochmal versuchen.</p>
+  </div>
+</div>
+
+<div id="app" class="screen" hidden>
+  <header>
+    <h1>🔊 Sadias Soundboard</h1>
+    <button id="adminBtn" class="icon-btn" aria-label="Admin-Bereich" title="Admin-Bereich">⚙️</button>
+  </header>
+
+  <main>
+    <div id="emptyState" hidden>
+      <p>Noch keine Kacheln da.</p>
+      <p>Tippt oben rechts auf das Zahnrad ⚙️, um die erste Person oder das erste Kuscheltier hinzuzufügen.</p>
+    </div>
+    <div id="board" class="board"></div>
+  </main>
+</div>
+
+<div id="adminModal" class="modal-overlay" hidden>
+  <div class="modal">
+    <button id="adminClose" class="icon-btn modal-close" aria-label="Schließen">✕</button>
+
+    <div id="tokenStep">
+      <h2>Admin-Zugang</h2>
+      <p>Dieser Bereich ist nur für Eltern/Familie, die neue Kacheln hinzufügen. Dafür wird einmalig ein GitHub-Token gebraucht (Anleitung in der README).</p>
+      <input type="password" id="tokenInput" placeholder="GitHub-Token einfügen" autocomplete="off">
+      <button id="tokenSave">Speichern &amp; weiter</button>
+      <p id="tokenError" class="error" hidden></p>
+    </div>
+
+    <div id="adminPanel" hidden>
+      <h2>Kacheln verwalten</h2>
+      <p id="adminStatus"></p>
+      <div id="tileList" class="tile-list"></div>
+
+      <hr>
+
+      <h3>Neue Kachel hinzufügen</h3>
+      <form id="addForm">
+        <label>Name<br>
+          <input type="text" id="nameInput" placeholder="z.B. Oma" required>
+        </label>
+
+        <label>Foto<br>
+          <input type="file" id="photoInput" accept="image/*" required>
+        </label>
+        <img id="photoPreview" class="preview-img" hidden alt="Vorschau">
+
+        <div class="audio-tabs">
+          <button type="button" class="tab-btn active" data-tab="upload">Datei hochladen</button>
+          <button type="button" class="tab-btn" data-tab="record">Aufnehmen</button>
+        </div>
+
+        <div id="audioUploadTab" class="audio-tab">
+          <input type="file" id="audioInput" accept="audio/*">
+        </div>
+
+        <div id="audioRecordTab" class="audio-tab" hidden>
+          <button type="button" id="recordBtn">🎙️ Aufnahme starten</button>
+          <span id="recordTimer"></span>
+        </div>
+
+        <audio id="audioPreview" controls hidden></audio>
+
+        <button type="submit" id="saveTileBtn">Kachel speichern</button>
+        <p id="saveStatus"></p>
+      </form>
+
+      <button id="resetToken" class="link-btn" type="button">Anderes Token verwenden</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
