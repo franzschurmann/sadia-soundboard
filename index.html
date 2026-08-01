@@ -5,7 +5,66 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Sadias Soundboard</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8A%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="css/style.css?v=4">
+<!--
+  Bewusst EINE einzige Datei: HTML, CSS und JS inline.
+  Vorher lagen CSS/JS separat - der Browser hatte dann teils neues index.html und
+  teils altes app.js im Cache, was den Admin-Bereich dauerhaft bei "Einen Moment..."
+  haengen liess. Mit nur einer Datei kann dieser Mischzustand nicht mehr auftreten.
+-->
+<style>
+:root { --accent:#ff6f59; --accent2:#4ecdc4; --text:#2b2b2b; --card:#fff; }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:linear-gradient(160deg,#fff4e6,#ffe3ec); color:var(--text); min-height:100vh; }
+.screen { min-height:100vh; display:flex; }
+#gate { align-items:center; justify-content:center; padding:24px; }
+.gate-card { background:var(--card); border-radius:24px; padding:32px; max-width:340px; width:100%;
+  text-align:center; box-shadow:0 10px 30px rgba(0,0,0,.1); }
+.gate-emoji { font-size:48px; }
+.gate-card h1 { margin:8px 0; font-size:1.4rem; }
+#gateForm { display:flex; flex-direction:column; gap:12px; margin-top:16px; }
+#gateForm input { padding:12px 14px; border-radius:12px; border:2px solid #eee; font-size:1rem; text-align:center; }
+#gateForm button { padding:12px; border:none; border-radius:12px; background:var(--accent);
+  color:#fff; font-size:1rem; font-weight:600; cursor:pointer; }
+.error { color:#d64545; font-size:.9rem; word-break:break-word; }
+#app { flex-direction:column; width:100%; }
+header { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; }
+header h1 { font-size:1.3rem; margin:0; }
+.icon-btn { background:none; border:none; font-size:1.6rem; cursor:pointer; padding:6px; line-height:1; border-radius:50%; }
+.icon-btn:hover { background:rgba(0,0,0,.05); }
+main { flex:1; padding:0 20px 40px; }
+#emptyState { text-align:center; margin-top:60px; color:#777; font-size:1.05rem; line-height:1.6; }
+.board { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:16px; max-width:900px; margin:0 auto; }
+.tile { border:none; border-radius:20px; background:var(--card); padding:0; overflow:hidden; cursor:pointer;
+  box-shadow:0 6px 16px rgba(0,0,0,.08); transition:transform .12s ease; display:flex; flex-direction:column; }
+.tile img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#eee; }
+.tile span { display:block; padding:10px 8px; font-weight:600; font-size:.95rem; text-align:center; }
+.tile:active, .tile.playing { transform:scale(.95); }
+.tile.playing { outline:4px solid var(--accent2); }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); display:flex; align-items:flex-start;
+  justify-content:center; padding:24px; overflow-y:auto; z-index:10; }
+.modal { background:#fff; border-radius:20px; padding:24px; max-width:480px; width:100%; position:relative; margin:20px 0; }
+.modal-close { position:absolute; top:12px; right:12px; }
+.tile-list { display:flex; flex-direction:column; gap:8px; max-height:240px; overflow-y:auto; margin:12px 0; }
+.tile-row { display:flex; align-items:center; gap:10px; padding:6px; border-radius:10px; background:#f7f7f7; }
+.tile-row img { width:40px; height:40px; object-fit:cover; border-radius:8px; background:#eee; }
+.tile-row span { flex:1; }
+.tile-row button { border:none; background:none; font-size:1.1rem; cursor:pointer; }
+#addForm { display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+#addForm label { font-size:.9rem; font-weight:600; }
+#addForm input[type=text] { width:100%; padding:10px; border-radius:10px; border:1px solid #ddd; margin-top:4px; }
+#tokenInput { width:100%; padding:10px; border-radius:10px; border:1px solid #ddd; margin-bottom:10px; }
+.preview-img { width:100px; height:100px; object-fit:cover; border-radius:12px; }
+.audio-tabs { display:flex; gap:8px; }
+.tab-btn { flex:1; padding:8px; border-radius:10px; border:1px solid #ddd; background:#fafafa; cursor:pointer; }
+.tab-btn.active { background:var(--accent2); color:#fff; border-color:var(--accent2); }
+#recordBtn, #tokenSave { padding:10px 16px; border-radius:10px; border:none; background:var(--accent); color:#fff; cursor:pointer; }
+#saveTileBtn { padding:12px; border:none; border-radius:12px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
+.link-btn { background:none; border:none; color:#888; text-decoration:underline; cursor:pointer; margin-top:12px; font-size:.85rem; }
+.diag { font-family:ui-monospace,Menlo,monospace; font-size:.75rem; color:#666; background:#f5f5f5;
+  padding:8px; border-radius:8px; margin-top:10px; white-space:pre-wrap; word-break:break-all; }
+@media (max-width:480px){ .board{ grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); } }
+</style>
 </head>
 <body>
 
@@ -27,7 +86,6 @@
     <h1>🔊 Sadias Soundboard</h1>
     <button id="adminBtn" class="icon-btn" aria-label="Bearbeiten" title="Bearbeiten">⚙️</button>
   </header>
-
   <main>
     <div id="emptyState" hidden>
       <p>Noch keine Kacheln da.</p>
@@ -42,12 +100,14 @@
     <button id="adminClose" class="icon-btn modal-close" aria-label="Schließen">✕</button>
 
     <div id="loadingStep">
-      <p>Einen Moment…</p>
+      <h2>Einen Moment…</h2>
+      <p class="diag" id="loadingDiag">Starte…</p>
     </div>
 
     <div id="tokenStep" hidden>
       <h2>Einmalige Einrichtung</h2>
-      <p>Normalerweise erscheint dieser Schritt nicht — das Passwort reicht. Er taucht nur auf, wenn noch nie ein GitHub-Token hinterlegt wurde oder das alte nicht mehr gültig ist.</p>
+      <p>Normalerweise erscheint dieser Schritt nicht — das Passwort reicht. Er taucht nur auf,
+         wenn noch nie ein Token hinterlegt wurde oder das alte nicht mehr gültig ist.</p>
       <input type="password" id="tokenInput" placeholder="GitHub-Token einfügen" autocomplete="off">
       <button id="tokenSave">Einrichten</button>
       <p id="tokenError" class="error" hidden></p>
@@ -57,45 +117,421 @@
       <h2>Kacheln verwalten</h2>
       <p id="adminStatus"></p>
       <div id="tileList" class="tile-list"></div>
-
       <hr>
-
       <h3>Neue Kachel hinzufügen</h3>
       <form id="addForm">
-        <label>Name<br>
-          <input type="text" id="nameInput" placeholder="z.B. Oma" required>
-        </label>
-
-        <label>Foto<br>
-          <input type="file" id="photoInput" accept="image/*" required>
-        </label>
+        <label>Name<br><input type="text" id="nameInput" placeholder="z.B. Oma" required></label>
+        <label>Foto<br><input type="file" id="photoInput" accept="image/*" required></label>
         <img id="photoPreview" class="preview-img" hidden alt="Vorschau">
-
         <div class="audio-tabs">
           <button type="button" class="tab-btn active" data-tab="upload">Datei hochladen</button>
           <button type="button" class="tab-btn" data-tab="record">Aufnehmen</button>
         </div>
-
-        <div id="audioUploadTab" class="audio-tab">
-          <input type="file" id="audioInput" accept="audio/*">
-        </div>
-
-        <div id="audioRecordTab" class="audio-tab" hidden>
+        <div id="audioUploadTab"><input type="file" id="audioInput" accept="audio/*"></div>
+        <div id="audioRecordTab" hidden>
           <button type="button" id="recordBtn">🎙️ Aufnahme starten</button>
           <span id="recordTimer"></span>
         </div>
-
         <audio id="audioPreview" controls hidden></audio>
-
         <button type="submit" id="saveTileBtn">Kachel speichern</button>
         <p id="saveStatus"></p>
       </form>
-
       <button id="resetToken" class="link-btn" type="button">Setup zurücksetzen (neues Token hinterlegen)</button>
     </div>
   </div>
 </div>
 
-<script src="js/app.js?v=4"></script>
+<script>
+const OWNER = 'franzschurmann';
+const REPO = 'sadia-soundboard';
+const BRANCH = 'main';
+const SITE_PASSWORD = 'sadia';
+const PW_KEY = 'sb_pw';
+const SALT = 'sadia-soundboard-salt-v1';
+
+const $ = (id) => document.getElementById(id);
+const gate = $('gate'), app = $('app'), gateForm = $('gateForm'), gateInput = $('gateInput'), gateError = $('gateError');
+const board = $('board'), emptyState = $('emptyState');
+const adminBtn = $('adminBtn'), adminModal = $('adminModal'), adminClose = $('adminClose');
+const loadingStep = $('loadingStep'), loadingDiag = $('loadingDiag');
+const tokenStep = $('tokenStep'), tokenInput = $('tokenInput'), tokenSave = $('tokenSave'), tokenError = $('tokenError');
+const adminPanel = $('adminPanel'), adminStatus = $('adminStatus'), tileList = $('tileList'), resetTokenBtn = $('resetToken');
+const addForm = $('addForm'), nameInput = $('nameInput'), photoInput = $('photoInput'), photoPreview = $('photoPreview');
+const audioInput = $('audioInput'), audioPreview = $('audioPreview'), recordBtn = $('recordBtn'), recordTimer = $('recordTimer');
+const saveTileBtn = $('saveTileBtn'), saveStatus = $('saveStatus');
+
+let sitePassword = null, adminToken = null;
+let mediaRecorder = null, recordedChunks = [], recordedBlob = null, recordingInterval = null, recordSeconds = 0;
+
+// ---------- Gate ----------
+if (localStorage.getItem(PW_KEY) === SITE_PASSWORD) { sitePassword = SITE_PASSWORD; unlockApp(); }
+
+gateForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const val = gateInput.value.trim().toLowerCase();
+  if (val === SITE_PASSWORD) {
+    sitePassword = val;
+    localStorage.setItem(PW_KEY, val);
+    gateError.hidden = true;
+    unlockApp();
+  } else { gateError.hidden = false; }
+});
+
+function unlockApp() { gate.hidden = true; app.hidden = false; loadTiles(); }
+
+// ---------- Board ----------
+async function loadTiles() {
+  let tiles = [];
+  try {
+    const res = await fetch('data/tiles.json?cb=' + Date.now(), { cache: 'no-store' });
+    if (res.ok) tiles = await res.json();
+  } catch (e) { /* leeres Board ist ein gueltiger Zustand */ }
+  renderBoard(tiles);
+}
+
+function renderBoard(tiles) {
+  board.innerHTML = '';
+  emptyState.hidden = tiles.length !== 0;
+  tiles.forEach((tile) => {
+    const btn = document.createElement('button');
+    btn.className = 'tile';
+    const img = document.createElement('img');
+    img.src = tile.image; img.alt = tile.name; img.loading = 'lazy';
+    const label = document.createElement('span');
+    label.textContent = tile.name;
+    btn.append(img, label);
+    btn.addEventListener('click', () => playTile(tile, btn));
+    board.appendChild(btn);
+  });
+}
+
+function playTile(tile, btn) {
+  btn.classList.add('playing');
+  const audio = new Audio(tile.audio);
+  const clear = () => btn.classList.remove('playing');
+  audio.addEventListener('ended', clear);
+  audio.addEventListener('error', clear);
+  audio.play().catch(clear);
+  setTimeout(clear, 8000);
+}
+
+// ---------- Admin ----------
+adminBtn.addEventListener('click', () => { adminModal.hidden = false; tryAutoAdmin(); });
+adminClose.addEventListener('click', () => { adminModal.hidden = true; });
+resetTokenBtn.addEventListener('click', () => { adminToken = null; showTokenStep(); });
+
+function showStep(which) {
+  loadingStep.hidden = which !== 'loading';
+  tokenStep.hidden   = which !== 'token';
+  adminPanel.hidden  = which !== 'panel';
+}
+function showTokenStep(msg) {
+  showStep('token');
+  tokenError.hidden = !msg;
+  if (msg) tokenError.textContent = msg;
+}
+function showAdminPanel() { showStep('panel'); refreshTileList(); }
+
+// Jeder Pfad hier endet sichtbar. Ein Watchdog bricht ausserdem nach 10s ab,
+// damit der Ladezustand nie wieder dauerhaft stehenbleiben kann.
+async function tryAutoAdmin() {
+  if (adminToken) { showAdminPanel(); return; }
+  showStep('loading');
+  loadingDiag.textContent = 'Lade hinterlegten Zugang…';
+
+  let settled = false;
+  const watchdog = setTimeout(() => {
+    if (!settled) showTokenStep('Zeitüberschreitung beim Laden. Bitte einmalig ein Token hinterlegen:');
+  }, 10000);
+
+  try {
+    if (!sitePassword) throw new Error('Passwort nicht im Speicher — Seite neu laden');
+    if (!window.crypto || !window.crypto.subtle) throw new Error('Kein Web-Crypto (Seite über https:// öffnen)');
+
+    const res = await fetch('data/admin.key?cb=' + Date.now(), { cache: 'no-store' });
+    loadingDiag.textContent = 'admin.key HTTP ' + res.status;
+    if (res.status === 404) { settled = true; clearTimeout(watchdog); showTokenStep('Noch kein Zugang hinterlegt — bitte einmalig einrichten:'); return; }
+    if (!res.ok) throw new Error('admin.key nicht ladbar (HTTP ' + res.status + ')');
+
+    const raw = await res.text();
+    let blob;
+    try { blob = JSON.parse(raw); }
+    catch (_) { throw new Error('admin.key ist kein gültiges JSON: ' + raw.slice(0, 40)); }
+    if (!blob || !blob.iv || !blob.ciphertext) throw new Error('admin.key unvollständig');
+
+    loadingDiag.textContent = 'Entschlüssele…';
+    adminToken = await decryptToken(blob, sitePassword);
+    settled = true; clearTimeout(watchdog);
+    showAdminPanel();
+  } catch (e) {
+    settled = true; clearTimeout(watchdog);
+    showTokenStep('Automatischer Zugang fehlgeschlagen: ' + (e && e.message ? e.message : e));
+  }
+}
+
+tokenSave.addEventListener('click', async () => {
+  const val = tokenInput.value.trim();
+  if (!val) return;
+  tokenError.hidden = true;
+  tokenSave.disabled = true; tokenSave.textContent = 'Richte ein…';
+  try {
+    const check = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO, { headers: authHeaders(val) });
+    if (!check.ok) throw new Error('Token ungültig oder kein Zugriff auf das Repo (HTTP ' + check.status + ')');
+    const encrypted = await encryptToken(val, sitePassword);
+    const sha = await ghGetFileSha('data/admin.key', val);
+    await ghPutJson('data/admin.key', encrypted, sha, val, 'Admin-Zugang einrichten');
+    adminToken = val;
+    tokenInput.value = '';
+    showAdminPanel();
+  } catch (e) {
+    tokenError.textContent = 'Fehler: ' + e.message;
+    tokenError.hidden = false;
+  } finally {
+    tokenSave.disabled = false; tokenSave.textContent = 'Einrichten';
+  }
+});
+
+function authHeaders(token) {
+  return { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' };
+}
+
+// ---------- Crypto ----------
+async function deriveKey(password) {
+  // Ohne diese Pruefung wuerde TextEncoder ein null still als Text "null" kodieren.
+  // Genau das hat den Admin-Bereich schon einmal dauerhaft unbrauchbar gemacht.
+  if (typeof password !== 'string' || !password) throw new Error('Passwort fehlt beim Ver-/Entschlüsseln');
+  const enc = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode(SALT), iterations: 100000, hash: 'SHA-256' },
+    km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+const b64 = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function encryptToken(token, password) {
+  const key = await deriveKey(password);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token));
+  return { iv: b64(iv), ciphertext: b64(ct) };
+}
+async function decryptToken(blob, password) {
+  const key = await deriveKey(password);
+  let plain;
+  try {
+    plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(blob.iv) }, key, unb64(blob.ciphertext));
+  } catch (_) {
+    throw new Error('Entschlüsselung fehlgeschlagen (Passwort passt nicht zum hinterlegten Zugang)');
+  }
+  return new TextDecoder().decode(plain);
+}
+
+// ---------- GitHub API ----------
+async function ghGetJson(path, token) {
+  const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path + '?ref=' + BRANCH, { headers: authHeaders(token) });
+  if (res.status === 404) return { sha: null, data: [] };
+  if (!res.ok) throw new Error('Laden fehlgeschlagen (' + res.status + ')');
+  const json = await res.json();
+  return { sha: json.sha, data: JSON.parse(decodeURIComponent(escape(atob(json.content.replace(/\n/g, ''))))) };
+}
+async function ghPutJson(path, dataObj, sha, token, message) {
+  const body = { message: message, content: btoa(unescape(encodeURIComponent(JSON.stringify(dataObj, null, 2)))), branch: BRANCH };
+  if (sha) body.sha = sha;
+  const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
+    method: 'PUT', headers: Object.assign(authHeaders(token), { 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
+  if (!res.ok) throw new Error('Speichern fehlgeschlagen (' + res.status + ')');
+  return res.json();
+}
+async function ghPutBinary(path, base64Content, token, message) {
+  const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
+    method: 'PUT', headers: Object.assign(authHeaders(token), { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message: message, content: base64Content, branch: BRANCH }) });
+  if (!res.ok) throw new Error('Datei-Upload fehlgeschlagen (' + res.status + ')');
+  return res.json();
+}
+async function ghGetFileSha(path, token) {
+  const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path + '?ref=' + BRANCH, { headers: authHeaders(token) });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Fehler beim Suchen der Datei (' + res.status + ')');
+  return (await res.json()).sha;
+}
+async function ghDeletePath(path, sha, token, message) {
+  const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
+    method: 'DELETE', headers: Object.assign(authHeaders(token), { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ message: message, sha: sha, branch: BRANCH }) });
+  if (!res.ok) throw new Error('Löschen fehlgeschlagen (' + res.status + ')');
+}
+
+// ---------- Kachel-Liste ----------
+async function refreshTileList() {
+  tileList.innerHTML = '<p>Lade…</p>';
+  adminStatus.textContent = '';
+  try {
+    const result = await ghGetJson('data/tiles.json', adminToken);
+    renderTileList(result.data);
+  } catch (e) {
+    tileList.innerHTML = '';
+    adminStatus.textContent = 'Fehler: ' + e.message;
+  }
+}
+
+function renderTileList(tiles) {
+  tileList.innerHTML = '';
+  if (!tiles.length) { tileList.innerHTML = '<p>Noch keine Kacheln.</p>'; return; }
+  tiles.forEach((tile) => {
+    const row = document.createElement('div');
+    row.className = 'tile-row';
+    const img = document.createElement('img'); img.src = tile.image; img.alt = '';
+    const span = document.createElement('span'); span.textContent = tile.name;
+    const edit = document.createElement('button'); edit.type = 'button'; edit.textContent = '✏️';
+    edit.addEventListener('click', () => editTile(tile));
+    const del = document.createElement('button'); del.type = 'button'; del.textContent = '🗑️';
+    del.addEventListener('click', () => deleteTile(tile));
+    row.append(img, span, edit, del);
+    tileList.appendChild(row);
+  });
+}
+
+async function editTile(tile) {
+  const newName = prompt('Neuer Name:', tile.name);
+  if (!newName || !newName.trim() || newName.trim() === tile.name) return;
+  adminStatus.textContent = 'Speichere…';
+  try {
+    const result = await ghGetJson('data/tiles.json', adminToken);
+    const data = result.data;
+    const idx = data.findIndex((x) => x.id === tile.id);
+    if (idx > -1) data[idx].name = newName.trim();
+    await ghPutJson('data/tiles.json', data, result.sha, adminToken, 'Kachel umbenennen: ' + tile.name);
+    adminStatus.textContent = 'Gespeichert.';
+    refreshTileList();
+  } catch (e) { adminStatus.textContent = 'Fehler: ' + e.message; }
+}
+
+async function deleteTile(tile) {
+  if (!confirm('"' + tile.name + '" wirklich löschen?')) return;
+  adminStatus.textContent = 'Lösche…';
+  try {
+    const result = await ghGetJson('data/tiles.json', adminToken);
+    await ghPutJson('data/tiles.json', result.data.filter((x) => x.id !== tile.id), result.sha, adminToken, 'Kachel entfernen: ' + tile.name);
+    const imgSha = await ghGetFileSha(tile.image, adminToken);
+    if (imgSha) await ghDeletePath(tile.image, imgSha, adminToken, 'Foto entfernen: ' + tile.name);
+    const audSha = await ghGetFileSha(tile.audio, adminToken);
+    if (audSha) await ghDeletePath(tile.audio, audSha, adminToken, 'Audio entfernen: ' + tile.name);
+    adminStatus.textContent = 'Gelöscht. Kann bis zu einer Minute dauern, bis es auf der Seite verschwindet.';
+    refreshTileList();
+  } catch (e) { adminStatus.textContent = 'Fehler: ' + e.message; }
+}
+
+// ---------- Neue Kachel ----------
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    $('audioUploadTab').hidden = btn.dataset.tab !== 'upload';
+    $('audioRecordTab').hidden = btn.dataset.tab !== 'record';
+  });
+});
+
+photoInput.addEventListener('change', () => {
+  const f = photoInput.files[0];
+  if (f) { photoPreview.src = URL.createObjectURL(f); photoPreview.hidden = false; }
+});
+audioInput.addEventListener('change', () => {
+  const f = audioInput.files[0];
+  if (f) { audioPreview.src = URL.createObjectURL(f); audioPreview.hidden = false; }
+});
+
+recordBtn.addEventListener('click', async () => {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordedChunks = [];
+      const mt = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      mediaRecorder = new MediaRecorder(stream, mt ? { mimeType: mt } : undefined);
+      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+      mediaRecorder.onstop = () => {
+        recordedBlob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+        audioPreview.src = URL.createObjectURL(recordedBlob);
+        audioPreview.hidden = false;
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mediaRecorder.start();
+      recordBtn.textContent = '⏹️ Aufnahme stoppen';
+      recordSeconds = 0; recordTimer.textContent = '0:00';
+      recordingInterval = setInterval(() => {
+        recordSeconds++;
+        recordTimer.textContent = Math.floor(recordSeconds / 60) + ':' + String(recordSeconds % 60).padStart(2, '0');
+      }, 1000);
+    } catch (e) { alert('Mikrofon-Zugriff nicht möglich: ' + e.message); }
+  } else {
+    mediaRecorder.stop();
+    clearInterval(recordingInterval);
+    recordBtn.textContent = '🎙️ Aufnahme starten';
+  }
+});
+
+function fileToBase64(f) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(f);
+  });
+}
+
+function extFromFile(file, fallback) {
+  if (file.name) { const m = file.name.match(/\.([a-zA-Z0-9]+)$/); if (m) return m[1].toLowerCase(); }
+  const map = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif',
+    'audio/mpeg':'mp3','audio/mp4':'m4a','audio/wav':'wav','audio/webm':'webm','audio/ogg':'ogg' };
+  return map[file.type] || fallback;
+}
+
+function slugify(name) {
+  return name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'kachel';
+}
+
+addForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = nameInput.value.trim();
+  const photoFile = photoInput.files[0];
+  const tab = document.querySelector('.tab-btn.active').dataset.tab;
+
+  if (tab === 'record' && mediaRecorder && mediaRecorder.state === 'recording') {
+    saveStatus.textContent = 'Bitte zuerst die Aufnahme stoppen.'; return;
+  }
+  const audioSource = tab === 'upload' ? audioInput.files[0] : recordedBlob;
+  if (!name || !photoFile || !audioSource) {
+    saveStatus.textContent = 'Bitte Name, Foto und Ton angeben.'; return;
+  }
+
+  saveTileBtn.disabled = true;
+  saveStatus.textContent = 'Speichere…';
+  try {
+    const id = slugify(name) + '-' + Date.now();
+    const photoExt = extFromFile(photoFile, 'jpg');
+    const audioExt = tab === 'record' ? 'webm' : extFromFile(audioSource, 'mp3');
+    const photoB64 = await fileToBase64(photoFile);
+    const audioB64 = await fileToBase64(audioSource);
+
+    await ghPutBinary('media/' + id + '.' + photoExt, photoB64, adminToken, 'Foto hinzufügen: ' + name);
+    await ghPutBinary('media/' + id + '.' + audioExt, audioB64, adminToken, 'Audio hinzufügen: ' + name);
+
+    const result = await ghGetJson('data/tiles.json', adminToken);
+    result.data.push({ id: id, name: name, image: 'media/' + id + '.' + photoExt, audio: 'media/' + id + '.' + audioExt });
+    await ghPutJson('data/tiles.json', result.data, result.sha, adminToken, 'Kachel hinzufügen: ' + name);
+
+    saveStatus.textContent = 'Gespeichert! Kann bis zu einer Minute dauern, bis es auf der Seite live ist.';
+    addForm.reset();
+    photoPreview.hidden = true; audioPreview.hidden = true;
+    recordedBlob = null; recordTimer.textContent = '';
+    refreshTileList();
+  } catch (err) {
+    saveStatus.textContent = 'Fehler: ' + err.message;
+  } finally {
+    saveTileBtn.disabled = false;
+  }
+});
+</script>
 </body>
 </html>
