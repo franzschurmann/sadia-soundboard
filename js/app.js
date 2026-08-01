@@ -75,7 +75,7 @@ function unlockApp() {
 
 async function loadTiles() {
   try {
-    const res = await fetch('data/tiles.json?cb=' + Date.now());
+    const res = await fetch('data/tiles.json?cb=' + Date.now(), { cache: 'no-store' });
     const tiles = res.ok ? await res.json() : [];
     renderBoard(tiles);
   } catch (e) {
@@ -152,23 +152,43 @@ function showAdminPanel() {
 
 // Reads the password-encrypted token straight off the Pages site (no GitHub API,
 // so no unauthenticated rate limit). Password alone is enough, on any device.
+// Every failure path ends in a visible message - never leave the spinner up.
 async function tryAutoAdmin() {
   if (adminToken) {
     showAdminPanel();
     return;
   }
-  showStep('loading');
   try {
-    const res = await fetch('data/admin.key?cb=' + Date.now());
-    if (!res.ok) {
-      showTokenSetupStep();
+    showStep('loading');
+
+    const res = await fetch('data/admin.key?cb=' + Date.now(), { cache: 'no-store' });
+    if (res.status === 404) {
+      showTokenSetupStep('Noch kein Zugang hinterlegt — bitte einmalig einrichten:');
       return;
     }
-    const encrypted = JSON.parse(await res.text());
+    if (!res.ok) throw new Error('admin.key nicht ladbar (HTTP ' + res.status + ')');
+
+    const raw = await res.text();
+    let encrypted;
+    try {
+      encrypted = JSON.parse(raw);
+    } catch (parseErr) {
+      throw new Error('admin.key ist kein gültiges JSON: ' + raw.slice(0, 40));
+    }
+    if (!encrypted || !encrypted.iv || !encrypted.ciphertext) {
+      throw new Error('admin.key unvollständig');
+    }
+    if (!window.crypto || !window.crypto.subtle) {
+      throw new Error('Browser bietet keine Web-Crypto (nur über https:// erreichbar)');
+    }
+    if (!sitePassword) {
+      throw new Error('Passwort nicht im Speicher — Seite neu laden');
+    }
+
     adminToken = await decryptToken(encrypted, sitePassword);
     showAdminPanel();
   } catch (e) {
-    showTokenSetupStep('Der hinterlegte Zugang ließ sich nicht entschlüsseln. Bitte einmalig neu einrichten.');
+    showTokenSetupStep('Automatischer Zugang fehlgeschlagen: ' + (e && e.message ? e.message : e));
   }
 }
 
@@ -235,7 +255,12 @@ async function decryptToken(encrypted, password) {
   const key = await deriveKey(password);
   const iv = base64ToBuf(encrypted.iv);
   const ciphertext = base64ToBuf(encrypted.ciphertext);
-  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  let plainBuf;
+  try {
+    plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  } catch (e) {
+    throw new Error('Entschlüsselung fehlgeschlagen (Passwort passt nicht zum hinterlegten Zugang)');
+  }
   return new TextDecoder().decode(plainBuf);
 }
 
