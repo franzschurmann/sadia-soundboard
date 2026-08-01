@@ -2,8 +2,7 @@ const OWNER = 'franzschurmann';
 const REPO = 'sadia-soundboard';
 const BRANCH = 'main';
 const SITE_PASSWORD = 'sadia';
-const TOKEN_KEY = 'sb_gh_token';
-const UNLOCK_KEY = 'sb_unlocked';
+const PW_SESSION_KEY = 'sb_pw';
 
 const gate = document.getElementById('gate');
 const app = document.getElementById('app');
@@ -42,9 +41,14 @@ let recordedBlob = null;
 let recordingInterval = null;
 let recordSeconds = 0;
 
+let sitePassword = null;
+let adminToken = null;
+
 // ---------- Gate ----------
 
-if (localStorage.getItem(UNLOCK_KEY) === '1') {
+const savedPw = sessionStorage.getItem(PW_SESSION_KEY);
+if (savedPw) {
+  sitePassword = savedPw;
   unlockApp();
 }
 
@@ -52,7 +56,8 @@ gateForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const val = gateInput.value.trim().toLowerCase();
   if (val === SITE_PASSWORD) {
-    localStorage.setItem(UNLOCK_KEY, '1');
+    sitePassword = val;
+    sessionStorage.setItem(PW_SESSION_KEY, val);
     gateError.hidden = true;
     unlockApp();
   } else {
@@ -112,20 +117,26 @@ function playTile(tile, btn) {
 
 adminBtn.addEventListener('click', () => {
   adminModal.hidden = false;
-  if (localStorage.getItem(TOKEN_KEY)) {
-    showAdminPanel();
-  } else {
-    showTokenStep();
-  }
+  tryAutoAdmin();
 });
 
 adminClose.addEventListener('click', () => {
   adminModal.hidden = true;
 });
 
-function showTokenStep() {
+resetTokenBtn.addEventListener('click', () => {
+  showTokenSetupStep();
+});
+
+function showTokenSetupStep(errorMsg) {
   adminPanel.hidden = true;
   tokenStep.hidden = false;
+  if (errorMsg) {
+    tokenError.textContent = errorMsg;
+    tokenError.hidden = false;
+  } else {
+    tokenError.hidden = true;
+  }
 }
 
 function showAdminPanel() {
@@ -134,34 +145,97 @@ function showAdminPanel() {
   refreshTileList();
 }
 
-resetTokenBtn.addEventListener('click', () => {
-  localStorage.removeItem(TOKEN_KEY);
-  showTokenStep();
-});
+async function tryAutoAdmin() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/data/admin.key?ref=${BRANCH}`);
+    if (res.status === 404) {
+      showTokenSetupStep();
+      return;
+    }
+    if (!res.ok) throw new Error('Fehler beim Laden (' + res.status + ')');
+    const json = await res.json();
+    const decoded = JSON.parse(decodeURIComponent(escape(atob(json.content.replace(/\n/g, '')))));
+    const token = await decryptToken(decoded, sitePassword);
+    const check = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, { headers: authHeaders(token) });
+    if (!check.ok) throw new Error('Hinterlegtes Token ist ungültig oder abgelaufen.');
+    adminToken = token;
+    showAdminPanel();
+  } catch (e) {
+    showTokenSetupStep('Automatische Anmeldung nicht möglich (' + e.message + '). Einmalig neu einrichten:');
+  }
+}
 
 tokenSave.addEventListener('click', async () => {
   const val = tokenInput.value.trim();
   if (!val) return;
   tokenError.hidden = true;
   tokenSave.disabled = true;
-  tokenSave.textContent = 'Prüfe…';
+  tokenSave.textContent = 'Richte ein…';
   try {
-    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, { headers: authHeaders(val) });
-    if (!res.ok) throw new Error('bad token');
-    localStorage.setItem(TOKEN_KEY, val);
+    const check = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, { headers: authHeaders(val) });
+    if (!check.ok) throw new Error('Token ungültig oder kein Zugriff auf das Repo.');
+
+    const encrypted = await encryptToken(val, sitePassword);
+
+    let sha = null;
+    const existing = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/data/admin.key?ref=${BRANCH}`, { headers: authHeaders(val) });
+    if (existing.ok) {
+      const j = await existing.json();
+      sha = j.sha;
+    }
+    await ghPutJson('data/admin.key', encrypted, sha, val, 'Admin-Zugang einrichten');
+
+    adminToken = val;
     tokenInput.value = '';
     showAdminPanel();
   } catch (e) {
-    tokenError.textContent = 'Token ungültig oder kein Zugriff auf das Repo.';
+    tokenError.textContent = 'Fehler: ' + e.message;
     tokenError.hidden = false;
   } finally {
     tokenSave.disabled = false;
-    tokenSave.textContent = 'Speichern & weiter';
+    tokenSave.textContent = 'Einrichten';
   }
 });
 
 function authHeaders(token) {
   return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
+}
+
+// ---------- Crypto (password -> AES key, used only to hide the GitHub token at rest) ----------
+
+async function deriveKey(password) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode('sadia-soundboard-salt-v1'), iterations: 100000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+function bufToBase64(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function base64ToBuf(b64) {
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+async function encryptToken(token, password) {
+  const key = await deriveKey(password);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(token));
+  return { iv: bufToBase64(iv), ciphertext: bufToBase64(ciphertext) };
+}
+
+async function decryptToken(encrypted, password) {
+  const key = await deriveKey(password);
+  const iv = base64ToBuf(encrypted.iv);
+  const ciphertext = base64ToBuf(encrypted.ciphertext);
+  const plainBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  return new TextDecoder().decode(plainBuf);
 }
 
 // ---------- GitHub content helpers ----------
@@ -220,9 +294,8 @@ async function ghDeletePath(path, sha, token, message) {
 
 async function refreshTileList() {
   tileList.innerHTML = '<p>Lade…</p>';
-  const token = localStorage.getItem(TOKEN_KEY);
   try {
-    const { data } = await ghGetJson('data/tiles.json', token);
+    const { data } = await ghGetJson('data/tiles.json', adminToken);
     renderTileList(data);
   } catch (e) {
     tileList.innerHTML = '';
@@ -268,13 +341,12 @@ function renderTileList(tiles) {
 async function editTile(tile) {
   const newName = prompt('Neuer Name:', tile.name);
   if (!newName || !newName.trim() || newName.trim() === tile.name) return;
-  const token = localStorage.getItem(TOKEN_KEY);
   adminStatus.textContent = 'Speichere…';
   try {
-    const { data, sha } = await ghGetJson('data/tiles.json', token);
+    const { data, sha } = await ghGetJson('data/tiles.json', adminToken);
     const idx = data.findIndex((x) => x.id === tile.id);
     if (idx > -1) data[idx].name = newName.trim();
-    await ghPutJson('data/tiles.json', data, sha, token, `Kachel umbenennen: ${tile.name} -> ${newName.trim()}`);
+    await ghPutJson('data/tiles.json', data, sha, adminToken, `Kachel umbenennen: ${tile.name} -> ${newName.trim()}`);
     adminStatus.textContent = 'Gespeichert.';
     refreshTileList();
   } catch (e) {
@@ -284,17 +356,16 @@ async function editTile(tile) {
 
 async function deleteTile(tile) {
   if (!confirm(`"${tile.name}" wirklich löschen?`)) return;
-  const token = localStorage.getItem(TOKEN_KEY);
   adminStatus.textContent = 'Lösche…';
   try {
-    const { data, sha } = await ghGetJson('data/tiles.json', token);
+    const { data, sha } = await ghGetJson('data/tiles.json', adminToken);
     const updated = data.filter((x) => x.id !== tile.id);
-    await ghPutJson('data/tiles.json', updated, sha, token, `Kachel entfernen: ${tile.name}`);
+    await ghPutJson('data/tiles.json', updated, sha, adminToken, `Kachel entfernen: ${tile.name}`);
 
-    const imgSha = await ghGetFileSha(tile.image, token);
-    if (imgSha) await ghDeletePath(tile.image, imgSha, token, `Foto entfernen: ${tile.name}`);
-    const audSha = await ghGetFileSha(tile.audio, token);
-    if (audSha) await ghDeletePath(tile.audio, audSha, token, `Audio entfernen: ${tile.name}`);
+    const imgSha = await ghGetFileSha(tile.image, adminToken);
+    if (imgSha) await ghDeletePath(tile.image, imgSha, adminToken, `Foto entfernen: ${tile.name}`);
+    const audSha = await ghGetFileSha(tile.audio, adminToken);
+    if (audSha) await ghDeletePath(tile.audio, audSha, adminToken, `Audio entfernen: ${tile.name}`);
 
     adminStatus.textContent = 'Gelöscht. Kann bis zu einer Minute dauern, bis es auf der Seite verschwindet.';
     refreshTileList();
@@ -401,7 +472,6 @@ function slugify(name) {
 
 addForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const token = localStorage.getItem(TOKEN_KEY);
   const name = nameInput.value.trim();
   const photoFile = photoInput.files[0];
   const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
@@ -429,12 +499,12 @@ addForm.addEventListener('submit', async (e) => {
     const photoBase64 = await fileToBase64(photoFile);
     const audioBase64 = await fileToBase64(audioSource);
 
-    await ghPutBinary(`media/${id}.${photoExt}`, photoBase64, token, `Foto hinzufügen: ${name}`);
-    await ghPutBinary(`media/${id}.${audioExt}`, audioBase64, token, `Audio hinzufügen: ${name}`);
+    await ghPutBinary(`media/${id}.${photoExt}`, photoBase64, adminToken, `Foto hinzufügen: ${name}`);
+    await ghPutBinary(`media/${id}.${audioExt}`, audioBase64, adminToken, `Audio hinzufügen: ${name}`);
 
-    const { data, sha } = await ghGetJson('data/tiles.json', token);
+    const { data, sha } = await ghGetJson('data/tiles.json', adminToken);
     data.push({ id, name, image: `media/${id}.${photoExt}`, audio: `media/${id}.${audioExt}` });
-    await ghPutJson('data/tiles.json', data, sha, token, `Kachel hinzufügen: ${name}`);
+    await ghPutJson('data/tiles.json', data, sha, adminToken, `Kachel hinzufügen: ${name}`);
 
     saveStatus.textContent = 'Gespeichert! Kann bis zu einer Minute dauern, bis es auf der Seite live ist.';
     addForm.reset();

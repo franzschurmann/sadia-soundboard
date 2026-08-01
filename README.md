@@ -6,28 +6,17 @@ Ein Tippen-und-Abspielen-Soundboard mit Fotos und Stimmen der Familie und Liebli
 
 https://franzschurmann.github.io/sadia-soundboard/
 
-(Erst erreichbar, nachdem GitHub Pages einmalig aktiviert wurde — siehe unten.)
-
-## Einmalig einrichten: GitHub Pages aktivieren
-
-1. Im Repo auf GitHub: **Settings → Pages**
-2. "Build and deployment" → Source: **Deploy from a branch**
-3. Branch: **main**, Ordner: **/(root)**
-4. Save
-
-Dauert danach 1–2 Minuten, bis die Seite zum ersten Mal online ist.
-
 ## Passwort
 
-Beim ersten Öffnen (pro Gerät/Browser) fragt die Seite nach einem Passwort: **Sadia**
+Die Seite fragt beim Öffnen (einmal pro Browser-Sitzung) nach einem Passwort: **Sadia**
 
-**Wichtig, ehrlich gesagt:** Das ist nur ein Vorhang gegen zufällige Besucher, keine echte Absicherung. Das Repo ist öffentlich — wer die genaue Bild-/Audio-URL kennt oder das Repo durchsucht, kann Fotos und Aufnahmen trotzdem sehen, Passwort hin oder her. Eine echte Zugriffskontrolle würde einen Server brauchen, was hier bewusst nicht der Fall ist (maximal einfach, 0 zusätzliche Infrastruktur).
+**Ehrlich gesagt:** Das ist nur ein Vorhang gegen zufällige Besucher, keine echte Absicherung. Das Repo ist öffentlich — wer die genaue Bild-/Audio-URL kennt oder das Repo durchsucht, kann Fotos und Aufnahmen trotzdem sehen. Bewusst in Kauf genommen, weil es ein Spaßprojekt für die Familie ist, kein Hochsicherheits-Repo.
 
 ## Admin-Modus (Kacheln hinzufügen / umbenennen / löschen)
 
-Zahnrad-Symbol oben rechts antippen.
+Zahnrad-Symbol oben rechts antippen. Sobald einmal das Passwort "Sadia" eingegeben wurde, ist der Admin-Bereich direkt nutzbar — **kein Token pro Gerät nötig.**
 
-Einmalig pro Gerät (dein Handy, die Handys der Eltern, etc.) ein GitHub-Token einrichten:
+**Einmalig insgesamt** (nicht pro Gerät) muss trotzdem ein GitHub-Token hinterlegt werden, damit das Panel technisch Dateien ins Repo schreiben kann. Das übernimmt am besten Franz:
 
 1. https://github.com/settings/personal-access-tokens/new öffnen
 2. Name: z.B. "sadia-soundboard-admin"
@@ -35,9 +24,9 @@ Einmalig pro Gerät (dein Handy, die Handys der Eltern, etc.) ein GitHub-Token e
 4. Repository access → **Only select repositories** → sadia-soundboard
 5. Permissions → Repository permissions → **Contents** → **Read and write** (sonst nichts)
 6. Generate token, Token kopieren
-7. Im Zahnrad-Bereich der Seite einfügen und speichern
+7. Auf der Seite: Zahnrad antippen → Token einmalig einfügen → "Einrichten"
 
-Das Token wird nur lokal im Browser gespeichert (localStorage) und landet nie im Code oder Repo. Jedes Gerät braucht sein eigenes Token, oder man verwendet auf mehreren Geräten denselben — dann muss man beim Widerrufen aber auch überall neu einrichten.
+Das Token wird dabei mit dem Passwort "Sadia" verschlüsselt und so im Repo abgelegt (`data/admin.key`), nicht im Klartext. Ab da reicht für jeden, der die Seite mit "Sadia" öffnet, automatisch auch der Admin-Bereich — auf jedem Gerät, ohne noch mal ein Token einzugeben.
 
 **Kachel hinzufügen:** Name + Foto + entweder eine Audiodatei hochladen oder direkt über das Mikrofon aufnehmen ("🎙️ Aufnahme starten" / "⏹️ Aufnahme stoppen").
 
@@ -45,12 +34,11 @@ Nach dem Speichern committet GitHub die Dateien direkt ins Repo. GitHub Pages br
 
 ## Wer sieht/darf was
 
-- Wer das Seiten-Passwort kennt, sieht das Board und kann Sounds abspielen.
-- Nur wer zusätzlich ein GitHub-Token eingerichtet hat, kann Kacheln hinzufügen, umbenennen oder löschen.
+Nur noch eine Ebene, ganz bewusst: Wer das Passwort "Sadia" kennt, kann das Board benutzen **und** Kacheln hinzufügen/umbenennen/löschen. Es gibt keine getrennte "nur Eltern"-Stufe mehr — auch Sadia selbst könnte, sobald sie das Passwort kennt (sehr wahrscheinlich, es ist ihr eigener Name), den Admin-Bereich öffnen.
 
-## Sicherheitshinweis zum Token
+## Sicherheitshinweis
 
-Das Token erlaubt Schreibzugriff auf genau dieses eine Repo, beschränkt auf "Contents". Nicht auf einem fremden oder öffentlichen Gerät einfügen. Bei Verdacht auf Missbrauch: unter https://github.com/settings/tokens?type=beta das Token löschen — das Board funktioniert dann ohne dieses Gerät weiter, einfach ein neues Token erzeugen und auf den verbleibenden Geräten eintragen.
+Das Passwort "Sadia" ist als echte Absicherung sehr schwach (es ist buchstäblich der Name der Seite). Bewusst in Kauf genommen für ein Familien-Spaßprojekt. Wer die Seite findet und das Passwort errät, kann theoretisch auch Kacheln hinzufügen/löschen. Bei Verdacht auf Missbrauch: altes Token unter https://github.com/settings/tokens?type=beta widerrufen, dann im Zahnrad-Bereich über "Setup zurücksetzen" ein neues Token hinterlegen.
 
 ## Lokal testen
 
@@ -66,8 +54,9 @@ und dann `http://localhost:8000` öffnen.
 
 - `index.html`, `css/style.css`, `js/app.js` — die App
 - `data/tiles.json` — Liste aller Kacheln (Name + Pfade zu Foto/Audio)
+- `data/admin.key` — mit dem Passwort verschlüsseltes GitHub-Token (nur einmalig beim Setup angelegt)
 - `media/` — die eigentlichen Fotos und Audiodateien, vom Admin-Panel aus befüllt
 
 ## Warum kein eigener Server
 
-Bewusst 0 zusätzliche Infrastruktur: Hosting ist GitHub Pages (kostenlos), die "Datenbank" ist `data/tiles.json` im selben Repo, und der Schreibzugriff fürs Admin-Panel läuft direkt über die GitHub-API mit einem eng begrenzten Token. Kein separates Backend, kein Account bei einem Drittanbieter nötig.
+Bewusst 0 zusätzliche Infrastruktur: Hosting ist GitHub Pages (kostenlos), die "Datenbank" ist `data/tiles.json` im selben Repo, und der Schreibzugriff fürs Admin-Panel läuft direkt über die GitHub-API mit einem eng begrenzten, passwortverschlüsselten Token. Kein separates Backend, kein Account bei einem Drittanbieter nötig.
