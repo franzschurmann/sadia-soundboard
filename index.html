@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sadias Soundboard</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8A%3C/text%3E%3C/svg%3E">
 <!--
@@ -14,6 +14,12 @@
 <style>
 :root { --accent:#ff6f59; --accent2:#4ecdc4; --text:#2b2b2b; --card:#fff; }
 * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+/* MUSS vor allen display-Regeln stehen und !important sein.
+   Das Browser-Default [hidden]{display:none} kommt aus dem UA-Stylesheet und
+   verliert deshalb gegen JEDE eigene display-Regel. .screen und .modal-overlay
+   setzen display:flex - dadurch waren #app und #adminModal trotz hidden-Attribut
+   sichtbar, und das Overlay hat alle Klicks aufs Passwortfeld abgefangen. */
+[hidden] { display:none !important; }
 body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   background:linear-gradient(160deg,#fff4e6,#ffe3ec); color:var(--text); min-height:100vh; }
 .screen { min-height:100vh; display:flex; }
@@ -160,6 +166,8 @@ const addForm = $('addForm'), nameInput = $('nameInput'), photoInput = $('photoI
 const audioInput = $('audioInput'), audioPreview = $('audioPreview'), recordBtn = $('recordBtn'), recordTimer = $('recordTimer');
 const saveTileBtn = $('saveTileBtn'), saveStatus = $('saveStatus');
 
+const EMPTY_STATE_HTML = emptyState.innerHTML;   // Originaltext, bevor evtl. ein Fehler reingeschrieben wird
+
 let sitePassword = null, adminToken = null;
 let mediaRecorder = null, recordedChunks = [], recordedBlob = null, recordingInterval = null, recordSeconds = 0;
 
@@ -181,16 +189,31 @@ function unlockApp() { gate.hidden = true; app.hidden = false; loadTiles(); }
 
 // ---------- Board ----------
 async function loadTiles() {
-  let tiles = [];
   try {
     const res = await fetch('data/tiles.json?cb=' + Date.now(), { cache: 'no-store' });
-    if (res.ok) tiles = await res.json();
-  } catch (e) { /* leeres Board ist ein gueltiger Zustand */ }
-  renderBoard(tiles);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const tiles = await res.json();
+    // Kaputtes JSON darf nicht wie "noch keine Kacheln" aussehen - sonst sucht
+    // man den Fehler bei den Kacheln statt bei der Datei.
+    if (!Array.isArray(tiles)) throw new Error('tiles.json ist keine Liste');
+    renderBoard(tiles);
+  } catch (e) {
+    board.innerHTML = '';
+    emptyState.hidden = false;
+    // textContent statt innerHTML: die Meldung kann Teile der kaputten Datei
+    // enthalten und darf nicht als HTML interpretiert werden.
+    emptyState.innerHTML = '';
+    const p1 = document.createElement('p');
+    p1.textContent = 'Die Kachel-Liste konnte nicht geladen werden.';
+    const p2 = document.createElement('p');
+    p2.textContent = 'Bitte neu laden. (Technisch: ' + String(e && e.message ? e.message : e) + ')';
+    emptyState.append(p1, p2);
+  }
 }
 
 function renderBoard(tiles) {
   board.innerHTML = '';
+  emptyState.innerHTML = EMPTY_STATE_HTML;   // evtl. Fehlertext von vorher zuruecksetzen
   emptyState.hidden = tiles.length !== 0;
   tiles.forEach((tile) => {
     const btn = document.createElement('button');
@@ -205,19 +228,43 @@ function renderBoard(tiles) {
   });
 }
 
+// Nur EIN Ton gleichzeitig: Kinder tippen schnell mehrere Kacheln an, vorher
+// liefen die Aufnahmen dann uebereinander. Ausserdem kein fester 8s-Timer mehr -
+// der hat die Markierung mitten in laengeren Aufnahmen entfernt.
+let currentAudio = null, currentBtn = null;
+
+function stopCurrent() {
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  if (currentBtn) { currentBtn.classList.remove('playing'); currentBtn = null; }
+}
+
 function playTile(tile, btn) {
-  btn.classList.add('playing');
+  const wasSame = currentBtn === btn;
+  stopCurrent();
+  if (wasSame) return;   // zweites Tippen auf dieselbe Kachel stoppt
+
   const audio = new Audio(tile.audio);
-  const clear = () => btn.classList.remove('playing');
+  currentAudio = audio; currentBtn = btn;
+  btn.classList.add('playing');
+
+  const clear = () => { if (currentAudio === audio) stopCurrent(); };
   audio.addEventListener('ended', clear);
   audio.addEventListener('error', clear);
   audio.play().catch(clear);
-  setTimeout(clear, 8000);
 }
 
 // ---------- Admin ----------
 adminBtn.addEventListener('click', () => { adminModal.hidden = false; tryAutoAdmin(); });
-adminClose.addEventListener('click', () => { adminModal.hidden = true; });
+adminClose.addEventListener('click', closeAdmin);
+// Klick auf den dunklen Rand und Escape schliessen ebenfalls - auf dem Handy war
+// das kleine ✕ sonst der einzige Weg wieder heraus.
+adminModal.addEventListener('click', (e) => { if (e.target === adminModal) closeAdmin(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !adminModal.hidden) closeAdmin(); });
+
+function closeAdmin() {
+  adminModal.hidden = true;
+  loadTiles();   // frisch geladene Kacheln uebernehmen, sobald Pages neu gebaut hat
+}
 resetTokenBtn.addEventListener('click', () => { adminToken = null; showTokenStep(); });
 
 function showStep(which) {
@@ -241,7 +288,9 @@ async function tryAutoAdmin() {
 
   let settled = false;
   const watchdog = setTimeout(() => {
-    if (!settled) showTokenStep('Zeitüberschreitung beim Laden. Bitte einmalig ein Token hinterlegen:');
+    if (settled) return;
+    settled = true;   // sonst ueberschreibt ein spaet ankommendes Ergebnis den Timeout-Hinweis
+    showTokenStep('Zeitüberschreitung beim Laden. Bitte einmalig ein Token hinterlegen:');
   }, 10000);
 
   try {
@@ -261,9 +310,11 @@ async function tryAutoAdmin() {
 
     loadingDiag.textContent = 'Entschlüssele…';
     adminToken = await decryptToken(blob, sitePassword);
+    if (settled) return;   // Watchdog war schneller
     settled = true; clearTimeout(watchdog);
     showAdminPanel();
   } catch (e) {
+    if (settled) return;
     settled = true; clearTimeout(watchdog);
     showTokenStep('Automatischer Zugang fehlgeschlagen: ' + (e && e.message ? e.message : e));
   }
@@ -327,39 +378,62 @@ async function decryptToken(blob, password) {
 }
 
 // ---------- GitHub API ----------
+// GitHub schickt bei Fehlern eine erklaerende message mit ("Bad credentials",
+// "Resource not accessible by personal access token", ...). Die blosse
+// Statusnummer allein war beim Debuggen praktisch wertlos.
+async function ghFail(prefix, res) {
+  let detail = '';
+  try {
+    const body = await res.json();
+    if (body && body.message) detail = ': ' + body.message;
+  } catch (_) { /* kein JSON-Body - dann eben nur der Status */ }
+  return new Error(prefix + ' (HTTP ' + res.status + detail + ')');
+}
+
 async function ghGetJson(path, token) {
   const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path + '?ref=' + BRANCH, { headers: authHeaders(token) });
   if (res.status === 404) return { sha: null, data: [] };
-  if (!res.ok) throw new Error('Laden fehlgeschlagen (' + res.status + ')');
+  if (!res.ok) throw await ghFail('Laden fehlgeschlagen', res);
   const json = await res.json();
-  return { sha: json.sha, data: JSON.parse(decodeURIComponent(escape(atob(json.content.replace(/\n/g, ''))))) };
+  const text = decodeURIComponent(escape(atob(json.content.replace(/\n/g, ''))));
+  let data;
+  // Eine leere oder kaputte tiles.json soll eine klare Meldung geben, statt den
+  // ganzen Admin-Bereich mit einem rohen JSON-Parserfehler abzuwuergen.
+  try { data = JSON.parse(text.trim() || '[]'); }
+  catch (_) { throw new Error(path + ' ist kein gültiges JSON'); }
+  if (!Array.isArray(data)) throw new Error(path + ' ist keine Liste');
+  return { sha: json.sha, data: data };
 }
 async function ghPutJson(path, dataObj, sha, token, message) {
   const body = { message: message, content: btoa(unescape(encodeURIComponent(JSON.stringify(dataObj, null, 2)))), branch: BRANCH };
   if (sha) body.sha = sha;
   const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
     method: 'PUT', headers: Object.assign(authHeaders(token), { 'Content-Type': 'application/json' }), body: JSON.stringify(body) });
-  if (!res.ok) throw new Error('Speichern fehlgeschlagen (' + res.status + ')');
+  if (!res.ok) throw await ghFail('Speichern fehlgeschlagen', res);
   return res.json();
 }
 async function ghPutBinary(path, base64Content, token, message) {
+  // Ohne sha lehnt GitHub ein PUT auf einen bereits existierenden Pfad mit 422 ab.
+  const sha = await ghGetFileSha(path, token);
+  const body = { message: message, content: base64Content, branch: BRANCH };
+  if (sha) body.sha = sha;
   const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
     method: 'PUT', headers: Object.assign(authHeaders(token), { 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ message: message, content: base64Content, branch: BRANCH }) });
-  if (!res.ok) throw new Error('Datei-Upload fehlgeschlagen (' + res.status + ')');
+    body: JSON.stringify(body) });
+  if (!res.ok) throw await ghFail('Datei-Upload fehlgeschlagen', res);
   return res.json();
 }
 async function ghGetFileSha(path, token) {
   const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path + '?ref=' + BRANCH, { headers: authHeaders(token) });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error('Fehler beim Suchen der Datei (' + res.status + ')');
+  if (!res.ok) throw await ghFail('Fehler beim Suchen der Datei', res);
   return (await res.json()).sha;
 }
 async function ghDeletePath(path, sha, token, message) {
   const res = await fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
     method: 'DELETE', headers: Object.assign(authHeaders(token), { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ message: message, sha: sha, branch: BRANCH }) });
-  if (!res.ok) throw new Error('Löschen fehlgeschlagen (' + res.status + ')');
+  if (!res.ok) throw await ghFail('Löschen fehlgeschlagen', res);
 }
 
 // ---------- Kachel-Liste ----------
@@ -446,7 +520,9 @@ recordBtn.addEventListener('click', async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordedChunks = [];
-      const mt = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      // isTypeSupported fehlt auf aelteren Safari-Versionen ganz.
+      const mt = (typeof MediaRecorder.isTypeSupported === 'function'
+        && MediaRecorder.isTypeSupported('audio/webm')) ? 'audio/webm' : '';
       mediaRecorder = new MediaRecorder(stream, mt ? { mimeType: mt } : undefined);
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
       mediaRecorder.onstop = () => {
@@ -470,6 +546,40 @@ recordBtn.addEventListener('click', async () => {
   }
 });
 
+// Handyfotos sind 3-5 MB. Ungeskaliert landen sie fuer immer in der Repo-History,
+// zaehlen gegen das GitHub-Pages-Limit und werden dann in eine 140px-Kachel geladen.
+// 900px als quadratischer Mittenausschnitt reicht dafuer mehr als aus.
+const PHOTO_MAX = 900;
+
+function downscalePhoto(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const size = Math.min(side, PHOTO_MAX);
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        // Mittenausschnitt, weil die Kacheln ohnehin quadratisch dargestellt werden.
+        canvas.getContext('2d').drawImage(img,
+          (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side,
+          0, 0, size, size);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          // Bei Fehlschlag lieber das Original hochladen als gar nichts.
+          resolve(blob ? { blob: blob, ext: 'jpg' } : { blob: file, ext: extFromFile(file, 'jpg') });
+        }, 'image/jpeg', 0.82);
+      } catch (_) {
+        URL.revokeObjectURL(url);
+        resolve({ blob: file, ext: extFromFile(file, 'jpg') });
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve({ blob: file, ext: extFromFile(file, 'jpg') }); };
+    img.src = url;
+  });
+}
+
 function fileToBase64(f) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
@@ -479,11 +589,22 @@ function fileToBase64(f) {
   });
 }
 
+const MIME_EXT = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif',
+  'audio/mpeg':'mp3','audio/mp4':'m4a','audio/aac':'m4a','audio/x-m4a':'m4a',
+  'audio/wav':'wav','audio/x-wav':'wav','audio/webm':'webm','audio/ogg':'ogg' };
+
 function extFromFile(file, fallback) {
   if (file.name) { const m = file.name.match(/\.([a-zA-Z0-9]+)$/); if (m) return m[1].toLowerCase(); }
-  const map = { 'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif',
-    'audio/mpeg':'mp3','audio/mp4':'m4a','audio/wav':'wav','audio/webm':'webm','audio/ogg':'ogg' };
-  return map[file.type] || fallback;
+  return extFromMime(file.type, fallback);
+}
+
+// MediaRecorder liefert je nach Browser ein anderes Format: Chrome/Firefox webm,
+// Safari (iPhone/iPad) audio/mp4. Vorher wurde jede Aufnahme fest als .webm
+// abgelegt - auf dem iPhone aufgenommene Kacheln waren damit unabspielbar.
+// Der MIME-Typ kann ausserdem Parameter tragen ("audio/webm;codecs=opus").
+function extFromMime(mime, fallback) {
+  const base = String(mime || '').split(';')[0].trim().toLowerCase();
+  return MIME_EXT[base] || fallback;
 }
 
 function slugify(name) {
@@ -509,9 +630,14 @@ addForm.addEventListener('submit', async (e) => {
   saveStatus.textContent = 'Speichere…';
   try {
     const id = slugify(name) + '-' + Date.now();
-    const photoExt = extFromFile(photoFile, 'jpg');
-    const audioExt = tab === 'record' ? 'webm' : extFromFile(audioSource, 'mp3');
-    const photoB64 = await fileToBase64(photoFile);
+    const photo = await downscalePhoto(photoFile);
+    const photoExt = photo.ext;
+    // Bei Aufnahmen die tatsaechliche Endung aus dem Blob-Typ ableiten
+    // (Safari liefert mp4, nicht webm).
+    const audioExt = tab === 'record'
+      ? extFromMime(audioSource.type, 'webm')
+      : extFromFile(audioSource, 'mp3');
+    const photoB64 = await fileToBase64(photo.blob);
     const audioB64 = await fileToBase64(audioSource);
 
     await ghPutBinary('media/' + id + '.' + photoExt, photoB64, adminToken, 'Foto hinzufügen: ' + name);
