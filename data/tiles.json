@@ -28,5 +28,11 @@
     "name": "Elefant",
     "image": "media/elefant-1785605221990.jpg",
     "audio": "media/elefant-1785605221990.m4a"
+  },
+  {
+    "id": "kreisel-1785605608542",
+    "name": "Kreisel",
+    "image": "media/kreisel-1785605608542.jpg",
+    "audio": "media/kreisel-1785605608542.m4a"
   }
 ]
