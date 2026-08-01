@@ -16,5 +16,11 @@
     "name": "Papi",
     "image": "media/papi-1785604777917.jpg",
     "audio": "media/papi-1785604777917.m4a"
+  },
+  {
+    "id": "franz-1785604869040",
+    "name": "Franz",
+    "image": "media/franz-1785604869040.jpg",
+    "audio": "media/franz-1785604869040.m4a"
   }
 ]
