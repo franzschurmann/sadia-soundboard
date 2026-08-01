@@ -25,7 +25,7 @@
 <div id="app" class="screen" hidden>
   <header>
     <h1>🔊 Sadias Soundboard</h1>
-    <button id="adminBtn" class="icon-btn" aria-label="Admin-Bereich" title="Admin-Bereich">⚙️</button>
+    <button id="adminBtn" class="icon-btn" aria-label="Bearbeiten" title="Bearbeiten">⚙️</button>
   </header>
 
   <main>
@@ -41,9 +41,13 @@
   <div class="modal">
     <button id="adminClose" class="icon-btn modal-close" aria-label="Schließen">✕</button>
 
-    <div id="tokenStep">
+    <div id="loadingStep">
+      <p>Einen Moment…</p>
+    </div>
+
+    <div id="tokenStep" hidden>
       <h2>Einmalige Einrichtung</h2>
-      <p>Das hier muss insgesamt nur einmal gemacht werden (nicht pro Gerät). Danach reicht überall nur noch das Passwort „Sadia“, das du schon eingegeben hast — kein Token mehr nötig.</p>
+      <p>Normalerweise erscheint dieser Schritt nicht — das Passwort reicht. Er taucht nur auf, wenn noch nie ein GitHub-Token hinterlegt wurde oder das alte nicht mehr gültig ist.</p>
       <input type="password" id="tokenInput" placeholder="GitHub-Token einfügen" autocomplete="off">
       <button id="tokenSave">Einrichten</button>
       <p id="tokenError" class="error" hidden></p>

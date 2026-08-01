@@ -2,7 +2,7 @@ const OWNER = 'franzschurmann';
 const REPO = 'sadia-soundboard';
 const BRANCH = 'main';
 const SITE_PASSWORD = 'sadia';
-const PW_SESSION_KEY = 'sb_pw';
+const PW_KEY = 'sb_pw';
 
 const gate = document.getElementById('gate');
 const app = document.getElementById('app');
@@ -15,6 +15,7 @@ const emptyState = document.getElementById('emptyState');
 const adminBtn = document.getElementById('adminBtn');
 const adminModal = document.getElementById('adminModal');
 const adminClose = document.getElementById('adminClose');
+const loadingStep = document.getElementById('loadingStep');
 const tokenStep = document.getElementById('tokenStep');
 const tokenInput = document.getElementById('tokenInput');
 const tokenSave = document.getElementById('tokenSave');
@@ -46,9 +47,8 @@ let adminToken = null;
 
 // ---------- Gate ----------
 
-const savedPw = sessionStorage.getItem(PW_SESSION_KEY);
-if (savedPw) {
-  sitePassword = savedPw;
+if (localStorage.getItem(PW_KEY) === SITE_PASSWORD) {
+  sitePassword = SITE_PASSWORD;
   unlockApp();
 }
 
@@ -57,7 +57,7 @@ gateForm.addEventListener('submit', (e) => {
   const val = gateInput.value.trim().toLowerCase();
   if (val === SITE_PASSWORD) {
     sitePassword = val;
-    sessionStorage.setItem(PW_SESSION_KEY, val);
+    localStorage.setItem(PW_KEY, val);
     gateError.hidden = true;
     unlockApp();
   } else {
@@ -125,12 +125,18 @@ adminClose.addEventListener('click', () => {
 });
 
 resetTokenBtn.addEventListener('click', () => {
+  adminToken = null;
   showTokenSetupStep();
 });
 
+function showStep(which) {
+  loadingStep.hidden = which !== 'loading';
+  tokenStep.hidden = which !== 'token';
+  adminPanel.hidden = which !== 'panel';
+}
+
 function showTokenSetupStep(errorMsg) {
-  adminPanel.hidden = true;
-  tokenStep.hidden = false;
+  showStep('token');
   if (errorMsg) {
     tokenError.textContent = errorMsg;
     tokenError.hidden = false;
@@ -140,28 +146,29 @@ function showTokenSetupStep(errorMsg) {
 }
 
 function showAdminPanel() {
-  tokenStep.hidden = true;
-  adminPanel.hidden = false;
+  showStep('panel');
   refreshTileList();
 }
 
+// Reads the password-encrypted token straight off the Pages site (no GitHub API,
+// so no unauthenticated rate limit). Password alone is enough, on any device.
 async function tryAutoAdmin() {
+  if (adminToken) {
+    showAdminPanel();
+    return;
+  }
+  showStep('loading');
   try {
-    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/data/admin.key?ref=${BRANCH}`);
-    if (res.status === 404) {
+    const res = await fetch('data/admin.key?cb=' + Date.now());
+    if (!res.ok) {
       showTokenSetupStep();
       return;
     }
-    if (!res.ok) throw new Error('Fehler beim Laden (' + res.status + ')');
-    const json = await res.json();
-    const decoded = JSON.parse(decodeURIComponent(escape(atob(json.content.replace(/\n/g, '')))));
-    const token = await decryptToken(decoded, sitePassword);
-    const check = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, { headers: authHeaders(token) });
-    if (!check.ok) throw new Error('Hinterlegtes Token ist ungültig oder abgelaufen.');
-    adminToken = token;
+    const encrypted = JSON.parse(await res.text());
+    adminToken = await decryptToken(encrypted, sitePassword);
     showAdminPanel();
   } catch (e) {
-    showTokenSetupStep('Automatische Anmeldung nicht möglich (' + e.message + '). Einmalig neu einrichten:');
+    showTokenSetupStep('Der hinterlegte Zugang ließ sich nicht entschlüsseln. Bitte einmalig neu einrichten.');
   }
 }
 
@@ -176,13 +183,7 @@ tokenSave.addEventListener('click', async () => {
     if (!check.ok) throw new Error('Token ungültig oder kein Zugriff auf das Repo.');
 
     const encrypted = await encryptToken(val, sitePassword);
-
-    let sha = null;
-    const existing = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/data/admin.key?ref=${BRANCH}`, { headers: authHeaders(val) });
-    if (existing.ok) {
-      const j = await existing.json();
-      sha = j.sha;
-    }
+    const sha = await ghGetFileSha('data/admin.key', val);
     await ghPutJson('data/admin.key', encrypted, sha, val, 'Admin-Zugang einrichten');
 
     adminToken = val;
@@ -201,7 +202,7 @@ function authHeaders(token) {
   return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' };
 }
 
-// ---------- Crypto (password -> AES key, used only to hide the GitHub token at rest) ----------
+// ---------- Crypto (password -> AES key, hides the GitHub token at rest) ----------
 
 async function deriveKey(password) {
   const enc = new TextEncoder();
@@ -294,6 +295,7 @@ async function ghDeletePath(path, sha, token, message) {
 
 async function refreshTileList() {
   tileList.innerHTML = '<p>Lade…</p>';
+  adminStatus.textContent = '';
   try {
     const { data } = await ghGetJson('data/tiles.json', adminToken);
     renderTileList(data);
